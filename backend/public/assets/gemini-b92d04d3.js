@@ -1,0 +1,1 @@
+import{a as o}from"./index-f8917821.js";const t=async(a,e)=>{try{return(await o.chat.send(a,e)).response}catch(r){return console.error("AI Error:",r),`Error: ${r.message||"សូមអភ័យទោស មានបញ្ហាបច្គេកទេសក្នុងការភ្ជាប់ទៅកាន់ AI។ (Backend Error)"}`}};export{t as g};
