@@ -5,6 +5,11 @@ const { snakeToCamel } = require('../utils/mapKeys');
 const { logAction } = require('../utils/auditLogger');
 const { authenticateToken } = require('../utils/authMiddleware');
 
+// Auto-migrate schema for large strings
+db.query('ALTER TABLE leave_requests MODIFY evidence_photo LONGTEXT, MODIFY evidence_audio LONGTEXT')
+    .then(() => console.log('✅ Auto-migrated leave_requests table schema to support large images.'))
+    .catch(err => console.error('⚠️ Note: Auto-migration for leave_requests failed or already applied:', err.message));
+
 // GET all leave requests
 router.get('/', authenticateToken, async (req, res) => {
     try {
