@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="km">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HR System Management</title>
+    <link rel="icon" type="image/png" href="./logo.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Kantumruy+Pro:wght@100;400;700&family=Inter:wght@400;600;700&display=swap"
+        rel="stylesheet">
+    <style>
+        html {
+            font-size: 16px;
+        }
+
+        body {
+            font-family: 'Kantumruy Pro', 'Inter', sans-serif;
+            background-color: #f8fafc;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        @keyframes scan {
+            0% {
+                top: 0;
+            }
+
+            50% {
+                top: 100%;
+            }
+
+            100% {
+                top: 0;
+            }
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+
+            to {
+                opacity: 1;
+            }
+        }
+
+        @keyframes scaleUp {
+            from {
+                transform: scale(0.95);
+                opacity: 0;
+            }
+
+            to {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        @keyframes shake {
+
+            0%,
+            100% {
+                transform: translateX(0);
+            }
+
+            25% {
+                transform: translateX(-5px);
+            }
+
+            75% {
+                transform: translateX(5px);
+            }
+        }
+
+        @keyframes slideUp {
+            from {
+                transform: translateY(100%);
+                opacity: 0;
+            }
+
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .scan-line {
+            animation: scan 2s infinite linear;
+        }
+
+        @keyframes scanLine {
+            0% {
+                top: 0;
+                opacity: 0;
+            }
+
+            10% {
+                opacity: 1;
+            }
+
+            90% {
+                opacity: 1;
+            }
+
+            100% {
+                top: 100%;
+                opacity: 0;
+            }
+        }
+
+        .animate-scanLine {
+            animation: scanLine 2s linear infinite;
+        }
+
+        .animate-fadeIn {
+            animation: fadeIn 0.3s ease-out forwards;
+        }
+
+        .animate-scaleUp {
+            animation: scaleUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        .animate-shake {
+            animation: shake 0.4s ease-in-out;
+        }
+
+        .animate-slideUp {
+            animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #e2e8f0;
+            border-radius: 10px;
+        }
+
+        /* 🖨️ ROBUST PRINT STYLES */
+        @media print {
+            @page {
+                size: A4;
+                margin: 0;
+            }
+
+            body {
+                background: white !important;
+            }
+
+            /* Hide the main application structure completely */
+            #root>div:not(.printable-area) {
+                display: none !important;
+            }
+
+            /* Show only the printable container */
+            .printable-area {
+                display: block !important;
+                position: absolute !important;
+                left: 0 !important;
+                top: 0 !important;
+                width: 100% !important;
+                margin: 0 !important;
+                padding: 40px !important;
+                background: white !important;
+                color: black !important;
+                font-family: 'Kantumruy Pro', sans-serif !important;
+            }
+
+            .print\:hidden {
+                display: none !important;
+            }
+
+            /* Remove UI-specific decorations for print */
+            .printable-area {
+                box-shadow: none !important;
+                border: none !important;
+                border-radius: 0 !important;
+            }
+
+            /* Ensure colors are kept in PDFs */
+            * {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+        }
+    </style>
+
+    <link rel="stylesheet" href="./index.css">
+  <script type="module" crossorigin src="./assets/index-cdb11c56.js"></script>
+  <link rel="modulepreload" crossorigin href="./assets/vendor-080db55d.js">
+  <link rel="modulepreload" crossorigin href="./assets/utils-4f09bf4f.js">
+  <link rel="modulepreload" crossorigin href="./assets/charts-d5f9dd61.js">
+</head>
+
+<body>
+    <div id="root"></div>
+    
+</body>
+
+</html>
