@@ -6,8 +6,8 @@ if (!process.env.DB_USER) {
 }
 
 const pool = mysql.createPool({
-  host: process.env.DB_HOST || 'localhost',
-  user: process.env.DB_USER || 'u420178984_d2dhr', // Fail towards production username
+  host: process.env.DB_HOST || '127.0.0.1', // 🛠️ Updated to Hostinger stable IP
+  user: process.env.DB_USER || 'u420178984_d2dhr',
   password: process.env.DB_PASSWORD || '&rQ&fJT2',
   database: process.env.DB_NAME || 'u420178984_d2dhr',
   port: process.env.DB_PORT || 3306,
