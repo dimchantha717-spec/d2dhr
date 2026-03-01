@@ -8,10 +8,14 @@ const { authenticateToken } = require('../utils/authMiddleware');
 // Login
 router.post('/login', async (req, res) => {
     try {
-        const { username, password } = req.body;
-        const [rows] = await pool.query('SELECT * FROM employees WHERE username = ?', [username]);
+        const { username: rawUsername, password } = req.body;
+        const username = (rawUsername || '').trim().toLowerCase();
+
+        console.log(`📡 Login Attempt Start: User="${username}"`);
+        const [rows] = await pool.query('SELECT * FROM employees WHERE LOWER(username) = ?', [username]);
 
         if (rows.length === 0) {
+            console.log(`❌ Login FAILED: User "${username}" not found in database.`);
             return res.status(401).json({ error: 'Invalid credentials' });
         }
 
@@ -30,10 +34,16 @@ router.post('/login', async (req, res) => {
         }
 
         // Check password
-        const validPassword = await bcrypt.compare(password, user.password_hash).catch(() => false);
+        const validPassword = await bcrypt.compare(password, user.password_hash).catch(err => {
+            console.error('Bcrypt Error:', err);
+            return false;
+        });
         const isPlainMatch = user.password_hash === password;
 
+        console.log(`🔑 Pass Verify: Bcrypt=${validPassword}, Plain=${isPlainMatch}`);
+
         if (!validPassword && !isPlainMatch) {
+            console.log(`❌ Login FAILED: Password mismatch for user "${username}"`);
             return res.status(401).json({ error: 'Invalid credentials' });
         }
 
@@ -70,8 +80,8 @@ router.post('/login', async (req, res) => {
             }
         });
     } catch (err) {
-        console.error(err.message);
-        res.status(500).json({ error: 'Server error' });
+        console.error('🔥 Login Crash Error:', err);
+        res.status(500).json({ error: 'Server error: ' + err.message });
     }
 });
 
