@@ -1,12 +1,15 @@
+require('dotenv').config();
 const mysql = require('mysql2');
-const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '../.env') });
+
+if (!process.env.DB_USER) {
+  console.warn('❌ Database configuration (DB_USER) is missing from .env!');
+}
 
 const pool = mysql.createPool({
   host: process.env.DB_HOST || 'localhost',
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME || 'd2donehr',
+  user: process.env.DB_USER || 'u420178984_d2dhr', // Fail towards production username
+  password: process.env.DB_PASSWORD || '&rQ&fJT2',
+  database: process.env.DB_NAME || 'u420178984_d2dhr',
   port: process.env.DB_PORT || 3306,
   waitForConnections: true,
   connectionLimit: 10,
