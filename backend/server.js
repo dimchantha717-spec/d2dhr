@@ -1,7 +1,9 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '.env') });
+
+console.log('🚀 App Starting... Env DB_USER:', process.env.DB_USER || 'MISSING');
 
 const app = express();
 app.set('trust proxy', 1);
