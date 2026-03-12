@@ -331,13 +331,14 @@ router.get('/suggestions', async (req, res) => {
     try {
         let { role, lang } = req.query;
 
-        // Alias role for suggestions (Accountant uses Admin suggestions)
+        // Alias role for suggestions (If needed)
         let queryRole = role || 'employee';
-        if (queryRole === 'accountant') queryRole = 'admin';
+
 
         // Final fallback: Ensure role exists in our suggestion set
-        const validRoles = ['super_admin', 'admin', 'employee'];
+        const validRoles = ['super_admin', 'system_manager', 'admin', 'hr', 'accountant', 'employee'];
         if (!validRoles.includes(queryRole)) queryRole = 'employee';
+
 
         let query = 'SELECT text FROM chat_suggestions WHERE role = ? AND language = ? ORDER BY RAND() LIMIT 6';
         const [rows] = await db.query(query, [queryRole, lang || 'en']);
