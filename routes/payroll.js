@@ -6,7 +6,7 @@ const { logAction } = require('../utils/auditLogger');
 const { authenticateToken } = require('../utils/authMiddleware');
 
 // Get payroll records for a specific month
-router.get('/', async (req, res) => {
+router.get('/', authenticateToken, async (req, res) => {
     try {
         const { month } = req.query; // YYYY-MM
         let query = 'SELECT p.*, e.name, e.department, e.position FROM payroll_records p JOIN employees e ON p.employee_id = e.id';
