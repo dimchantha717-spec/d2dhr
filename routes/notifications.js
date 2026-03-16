@@ -7,7 +7,7 @@ const { sendNotification } = require('../services/telegramService');
 
 
 // GET all notifications
-router.get('/', async (req, res) => {
+router.get('/', authenticateToken, async (req, res) => {
     try {
         const [rows] = await db.query('SELECT * FROM notifications ORDER BY date DESC');
         res.json(snakeToCamel(rows));
