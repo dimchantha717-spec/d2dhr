@@ -66,6 +66,26 @@ async function runMigrations() {
             console.log('✅ chat_suggestions table created.');
         }
 
+        // --- Warnings Table ---
+        const hasWarnings = await tableExists('warnings');
+        if (!hasWarnings) {
+            console.log('📦 Creating warnings table...');
+            await db.query(`
+                CREATE TABLE warnings (
+                    id varchar(50) NOT NULL,
+                    employee_id varchar(50) DEFAULT NULL,
+                    issued_by varchar(50) DEFAULT NULL,
+                    date date DEFAULT NULL,
+                    reason text,
+                    severity varchar(20) DEFAULT NULL,
+                    status varchar(20) DEFAULT NULL,
+                    created_at timestamp DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (id),
+                    KEY employee_id (employee_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            `);
+        }
+
         console.log('✅ Database migrations completed successfully.');
     } catch (err) {
         console.error('❌ Database migration error:', err);
