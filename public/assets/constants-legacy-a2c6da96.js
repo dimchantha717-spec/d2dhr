@@ -1,0 +1,1 @@
+(function(){System.register([],function(e,n){"use strict";var t;return{setters:[],execute:function(){e("D",t=["IT","Accounting","Marketing","HR","Operations","Sales","Logistics","Customer Service","Legal","Management"])}}})})();
