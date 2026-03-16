@@ -21,12 +21,15 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-// Cache strategy: Static assets (JS/CSS) get 1 year cache
-const cacheOptions = {
-    maxAge: '1y',
-    immutable: true,
-    index: false
-};
+// Serve Static Files from "public"
+app.use(express.static(path.join(__dirname, 'public'), {
+    maxAge: '1d', // Slightly more conservative cache for general assets
+    setHeaders: (res, filePath) => {
+        if (filePath.endsWith('.html')) {
+            res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        }
+    }
+}));
 
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
@@ -65,23 +68,8 @@ app.use('/api/telegram', require('./routes/telegram'));
 app.use('/api/upload', require('./routes/upload'));
 app.use('/api/performance', require('./routes/performance'));
 
-// Serve Frontend Static Files with Cache Control for hashed assets
-app.use(express.static(path.join(__dirname, 'public'), {
-    maxAge: '1y',
-    immutable: true,
-    index: false, // Don't serve index.html automatically from here
-    setHeaders: (res, filePath) => {
-        if (filePath.endsWith('.html')) {
-            // AUTHORITATIVE: Never cache index.html for SPAs
-            res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-            res.setHeader('Pragma', 'no-cache');
-            res.setHeader('Expires', '0');
-        } else if (filePath.endsWith('.js') || filePath.endsWith('.css')) {
-            // Assets need to be public for CDN/caching
-            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-        }
-    }
-}));
+// API Routes handled above...
+// (employeesRouter, shiftsRouter, etc are already mounted)
 
 // Handle React Routing (SPA) - Authoritative fallback
 app.get('*', (req, res) => {
