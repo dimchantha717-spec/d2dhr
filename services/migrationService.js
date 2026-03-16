@@ -24,6 +24,31 @@ async function runMigrations() {
         await addColumn('leave_requests', 'late_duration_value', 'INT DEFAULT 0');
         await addColumn('leave_requests', 'late_duration_unit', 'VARCHAR(20) DEFAULT "នាទី"');
 
+        // --- Notifications Table ---
+        const hasNotifications = await tableExists('notifications');
+        if (!hasNotifications) {
+            console.log('📦 Creating notifications table...');
+            await db.query(`
+                CREATE TABLE notifications (
+                    id varchar(50) NOT NULL,
+                    title varchar(255) NOT NULL,
+                    message text,
+                    target_type varchar(50) DEFAULT NULL,
+                    target_value varchar(100) DEFAULT NULL,
+                    priority varchar(20) DEFAULT 'Normal',
+                    is_read boolean DEFAULT FALSE,
+                    pushed_by varchar(255) DEFAULT NULL,
+                    image LONGTEXT DEFAULT NULL,
+                    date timestamp DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            `);
+        } else {
+            await addColumn('notifications', 'pushed_by', 'VARCHAR(255) DEFAULT NULL');
+            await addColumn('notifications', 'image', 'LONGTEXT DEFAULT NULL');
+            await addColumn('notifications', 'priority', 'VARCHAR(20) DEFAULT "Normal"');
+        }
+
         // --- Chat Suggestions Table ---
         const hasChatSuggestions = await tableExists('chat_suggestions');
         if (!hasChatSuggestions) {
