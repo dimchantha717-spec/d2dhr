@@ -8,7 +8,7 @@ const compression = require('compression');
 console.log('🚀 App Starting... Env DB_USER:', process.env.DB_USER || 'MISSING');
 
 const app = express();
-app.use(compression()); // Enable Gzip compression
+// app.use(compression()); // Enable Gzip compression (Disabled: LiteSpeed handle this)
 app.set('trust proxy', 1);
 const PORT = process.env.PORT || 5000;
 
@@ -69,17 +69,29 @@ app.use('/api/performance', require('./routes/performance'));
 app.use(express.static(path.join(__dirname, 'public'), {
     maxAge: '1y',
     immutable: true,
-    setHeaders: (res, path) => {
-        if (path.endsWith('.html')) {
-            // Never cache index.html to ensure people get the latest version
-            res.setHeader('Cache-Control', 'no-cache');
+    index: false, // Don't serve index.html automatically from here
+    setHeaders: (res, filePath) => {
+        if (filePath.endsWith('.html')) {
+            // AUTHORITATIVE: Never cache index.html for SPAs
+            res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+            res.setHeader('Pragma', 'no-cache');
+            res.setHeader('Expires', '0');
+        } else if (filePath.endsWith('.js') || filePath.endsWith('.css')) {
+            // Assets need to be public for CDN/caching
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
         }
     }
 }));
 
-// Handle React Routing (SPA)
+// Handle React Routing (SPA) - Authoritative fallback
 app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.sendFile(path.join(__dirname, 'public', 'index.html'), (err) => {
+        if (err) {
+            console.error("Failed to send index.html:", err);
+            res.status(404).send("Front-end not built or index.html missing in backend/public");
+        }
+    });
 });
 
 // Global Error Handler
