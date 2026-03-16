@@ -85,8 +85,10 @@ app.use('/api/telegram', require('./routes/telegram'));
 app.use('/api/upload', require('./routes/upload'));
 app.use('/api/performance', require('./routes/performance'));
 
-// API Routes handled above...
-// (employeesRouter, shiftsRouter, etc are already mounted)
+// API Fallback - 404 for any undefined /api routes
+app.use('/api/*', (req, res) => {
+    res.status(404).json({ error: 'API endpoint not found' });
+});
 
 // Handle React Routing (SPA) - Authoritative fallback
 app.get('*', (req, res) => {
