@@ -5,9 +5,6 @@ const { snakeToCamel } = require('../utils/mapKeys');
 const { authenticateToken } = require('../utils/authMiddleware');
 const { sendNotification } = require('../services/telegramService');
 
-// Auto-migration
-db.query('ALTER TABLE notifications ADD COLUMN IF NOT EXISTS pushed_by VARCHAR(255)')
-    .catch(() => {});
 
 // GET all notifications
 router.get('/', async (req, res) => {
