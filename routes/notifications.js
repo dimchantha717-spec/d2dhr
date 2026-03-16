@@ -23,18 +23,19 @@ router.get('/', async (req, res) => {
 // POST new notification
 router.post('/', authenticateToken, async (req, res) => {
     try {
-        const { id, title, message, targetType, targetValue, priority } = req.body;
+        const { id, title, message, targetType, targetValue, priority, image } = req.body;
         const pushedBy = req.user.name || 'Admin';
         const nid = id || Math.random().toString(36).substr(2, 9);
 
         await db.query(
-            'INSERT INTO notifications (id, title, message, target_type, target_value, priority, pushed_by) VALUES (?, ?, ?, ?, ?, ?, ?)',
-            [nid, title, message, targetType, targetValue, priority, pushedBy]
+            'INSERT INTO notifications (id, title, message, target_type, target_value, priority, pushed_by, image) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            [nid, title, message, targetType, targetValue, priority || 'normal', pushedBy, image || null]
         );
 
         // Send Telegram notification
-        const priorityEmoji = priority === 'high' ? '🚨' : '📢';
-        const telegramMessage = `${priorityEmoji} *New Notification*\n\n*${title}*\n${message}\n\n👤 Posted by: *${pushedBy}*\n🔥 Priority: ${priority.toUpperCase()}`;
+        const safePriority = priority || 'normal';
+        const priorityEmoji = safePriority === 'high' ? '🚨' : '📢';
+        const telegramMessage = `${priorityEmoji} *New Notification*\n\n*${title}*\n${message}\n\n👤 Posted by: *${pushedBy}*\n🔥 Priority: ${safePriority.toUpperCase()}`;
         sendNotification(telegramMessage);
 
         const [rows] = await db.query('SELECT * FROM notifications WHERE id = ?', [nid]);
