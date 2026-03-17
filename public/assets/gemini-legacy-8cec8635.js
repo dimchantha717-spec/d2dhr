@@ -1,1 +1,0 @@
-(function(){System.register(["./index-legacy-928f924e.js"],function(n,c){"use strict";var t,s;return{setters:[function(r){t=r.a}],execute:function(){n("g",s=async(r,a)=>{try{return(await t.chat.send(r,a)).response}catch(e){return console.error("AI Error:",e),`Error: ${e.message||"សូមអភ័យទោស មានបញ្ហាបច្គេកទេសក្នុងការភ្ជាប់ទៅកាន់ AI។ (Backend Error)"}`}})}}})})();
