@@ -1,76 +1,35 @@
-require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
+require('dotenv').config();
 
-const compression = require('compression');
-
-console.log('🚀 App Starting... Env DB_USER:', process.env.DB_USER || 'MISSING');
+/**
+ * PRODUCTION READY SERVER
+ * Optimized for Hostinger & Mobile Browsers
+ */
 
 const app = express();
-app.use(compression()); // Enable Gzip compression for all responses (including JSON API)
-app.set('trust proxy', 1);
 const PORT = process.env.PORT || 5000;
 
-// Run Migrations (Safe Start)
-const { runMigrations } = require('./services/migrationService');
-runMigrations().catch(err => console.error('🚫 Migration Startup Error:', err));
-
-// Middleware
+// 1. Security & Data Middleware
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Security & Performance Headers
+// 2. Custom Logging for diagnostics
 app.use((req, res, next) => {
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('X-Frame-Options', 'DENY');
-    res.setHeader('X-XSS-Protection', '1; mode=block');
-    // Vary: Accept-Encoding is important for proxies when compression is used
-    res.setHeader('Vary', 'Accept-Encoding');
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
     next();
 });
 
-// Serve Static Files from "public"
-app.use(express.static(path.join(__dirname, 'public'), {
-    maxAge: '1d', // Default for general files
-    setHeaders: (res, filePath) => {
-        // Versioned assets (JS/CSS from Vite) get 1 year cache
-        if (filePath.match(/\.(js|css|woff2|webp|png|jpg|jpeg|svg|ico)$/) && filePath.includes('assets')) {
-            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-        }
-        // HTML files should NEVER be cached to ensure users get the latest build links
-        if (filePath.endsWith('.html')) {
-            res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-        }
-    }
-}));
-
-app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
-    maxAge: '7d' // Photos/Uploads cache for 1 week
-}));
-
-// Health Check for Production Debugging
-app.get('/api/health', async (req, res) => {
-    try {
-        const dbConnection = require('./config/db');
-        await dbConnection.query('SELECT 1');
-        res.json({ status: 'ok', database: 'connected', version: '1.0.1' });
-    } catch (err) {
-        res.status(200).json({ status: 'warning', database: 'error', message: err.message });
-    }
-});
-
-// Routes
-const employeesRouter = require('./routes/employees');
-const shiftsRouter = require('./routes/shifts');
-const attendanceRouter = require('./routes/attendance');
-const leavesRouter = require('./routes/leaves');
-
-app.use('/api/employees', employeesRouter);
-app.use('/api/shifts', shiftsRouter);
-app.use('/api/attendance', attendanceRouter);
-app.use('/api/leaves', leavesRouter);
+// 3. API ROUTES
+// Mount all backend controllers
+app.use('/api/employees', require('./routes/employees'));
+app.use('/api/shifts', require('./routes/shifts'));
+app.use('/api/attendance', require('./routes/attendance'));
+app.use('/api/leaves', require('./routes/leaves'));
 app.use('/api/assets', require('./routes/assets'));
 app.use('/api/warnings', require('./routes/warnings'));
 app.use('/api/outdoor', require('./routes/outdoor'));
@@ -85,32 +44,60 @@ app.use('/api/telegram', require('./routes/telegram'));
 app.use('/api/upload', require('./routes/upload'));
 app.use('/api/performance', require('./routes/performance'));
 
-// API Fallback - 404 for any undefined /api routes
-app.use('/api/*', (req, res) => {
-    res.status(404).json({ error: 'API endpoint not found' });
+// 4. AUTHORITATIVE API GUARD
+// Prevents requests to missing /api routes from hitting the SPA fallback (index.html)
+// This is critical for preventing "Unexpected token '<'" errors in React.
+app.all('/api/*', (req, res) => {
+    res.status(404).json({
+        success: false,
+        error: 'API_NOT_FOUND',
+        message: `Endpoint ${req.originalUrl} not found on this server.`
+    });
 });
 
-// Handle React Routing (SPA) - Authoritative fallback
+// 5. STATIC ASSETS (Vite Build)
+// Serve build files from 'public' folder
+app.use(express.static(path.join(__dirname, 'public'), {
+    maxAge: '1d', // Cache static files (JS/CSS/JPG) for 1 day
+    setHeaders: (res, filePath) => {
+        // Additional headers can be set here if needed
+    }
+}));
+
+// 6. SPA FALLBACK (React Routing)
+// Serve index.html for any direct URL navigation that isn't a file or API
 app.get('*', (req, res) => {
+    // 💥 CRITICAL FOR SAFARI/MOBILE:
+    // Prevent aggressive caching of index.html to ensure users get latest JS/CSS builds
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-    res.sendFile(path.join(__dirname, 'public', 'index.html'), (err) => {
-        if (err) {
-            console.error("Failed to send index.html:", err);
-            res.status(404).send("Front-end not built or index.html missing in backend/public");
-        }
-    });
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+
+    const indexPath = path.join(__dirname, 'public', 'index.html');
+    if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+    } else {
+        res.status(404).send("Frontend build not detected. Please run 'npm run build' and ensure files are in backend/public.");
+    }
 });
 
-// Global Error Handler
+// 7. GLOBAL EXCEPTION HANDLER
 app.use((err, req, res, next) => {
-    console.error("🔥 Global Error Handler:", err);
-    res.status(500).json({
-        error: err.message || "Internal Server Error",
-        details: process.env.NODE_ENV === 'development' ? err.stack : undefined
+    console.error("🔥 Server Panic:", err);
+    res.status(err.status || 500).json({
+        success: false,
+        error: err.name || 'InternalServerError',
+        message: err.message || 'The server encountered an unexpected condition.'
     });
 });
 
-// Start Server
-app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`
+🚀 D2D HR System - Production Server
+------------------------------------
+- PORT: ${PORT}
+- NODE_ENV: ${process.env.NODE_ENV}
+- PUBLIC_DIR: ${path.join(__dirname, 'public')}
+- Status: Ready for all devices
+    `);
 });
