@@ -160,6 +160,9 @@ router.put('/:id', authenticateToken, async (req, res) => {
 // DELETE attendance record
 router.delete('/:id', authenticateToken, async (req, res) => {
     try {
+        const isManager = ['super_admin', 'system_manager', 'hr', 'admin'].includes(req.user.role);
+        if (!isManager) return res.status(403).json({ error: 'Permission denied. Management only.' });
+
         const { id } = req.params;
         const [result] = await db.query('DELETE FROM attendance_records WHERE id = ?', [id]);
         if (result.affectedRows === 0) {
