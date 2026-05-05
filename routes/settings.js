@@ -20,6 +20,8 @@ router.get('/', async (req, res) => {
 // POST/PUT setting
 router.post('/', authenticateToken, async (req, res) => {
     try {
+        const isSysAdmin = ['super_admin', 'system_manager'].includes(req.user.role);
+        if (!isSysAdmin) return res.status(403).json({ error: 'Permission denied. System Manager only.' });
         const { key, value } = req.body;
         // Check if exists
         const [checkRows] = await db.query('SELECT * FROM system_settings WHERE `key` = ?', [key]);
