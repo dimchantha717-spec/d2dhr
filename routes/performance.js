@@ -47,6 +47,8 @@ router.get('/employee/:id', async (req, res) => {
 // POST create review
 router.post('/', authenticateToken, async (req, res) => {
     try {
+        const isManager = ['super_admin', 'system_manager', 'hr', 'admin'].includes(req.user.role);
+        if (!isManager) return res.status(403).json({ error: 'Permission denied. Management only.' });
         const { employeeId, reviewerId, reviewDate, rating, comments, goals, status } = req.body;
         const id = Date.now().toString();
 
@@ -77,6 +79,8 @@ router.post('/', authenticateToken, async (req, res) => {
 // PUT update review
 router.put('/:id', authenticateToken, async (req, res) => {
     try {
+        const isManager = ['super_admin', 'system_manager', 'hr', 'admin'].includes(req.user.role);
+        if (!isManager) return res.status(403).json({ error: 'Permission denied. Management only.' });
         const { id } = req.params;
         const { rating, comments, goals, status } = req.body;
 
@@ -102,6 +106,8 @@ router.put('/:id', authenticateToken, async (req, res) => {
 // DELETE review
 router.delete('/:id', authenticateToken, async (req, res) => {
     try {
+        const isManager = ['super_admin', 'system_manager', 'hr', 'admin'].includes(req.user.role);
+        if (!isManager) return res.status(403).json({ error: 'Permission denied. Management only.' });
         const { id } = req.params;
         await db.query('DELETE FROM performance_reviews WHERE id = ?', [id]);
         res.json({ message: 'Review deleted successfully' });
