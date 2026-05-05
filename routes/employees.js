@@ -51,6 +51,8 @@ router.get('/:id', async (req, res) => {
 // POST new employee
 router.post('/', authenticateToken, async (req, res) => {
     try {
+        const isManager = ['super_admin', 'system_manager', 'hr', 'admin'].includes(req.user.role);
+        if (!isManager) return res.status(403).json({ error: 'Permission denied. Management only.' });
         const {
             name, gender, position, department, email, phone, joinDate, dob, nationality,
             salary, status, avatar, username, password, role, shiftId,
@@ -142,7 +144,14 @@ router.post('/', authenticateToken, async (req, res) => {
 // PUT update employee
 router.put('/:id', authenticateToken, async (req, res) => {
     try {
+        const isManager = ['super_admin', 'system_manager', 'hr', 'admin'].includes(req.user.role);
+        if (!isManager) return res.status(403).json({ error: 'Permission denied. Management only.' });
         const { id } = req.params;
+        const isSelf = String(req.user.id) === String(id);
+
+        if (!isManager && !isSelf) {
+            return res.status(403).json({ error: 'Permission denied. Management only.' });
+        }
         const {
             name, gender, position, department, email, phone, joinDate, dob, nationality,
             salary, status, avatar, username, password, role, shiftId,
@@ -286,6 +295,9 @@ router.put('/:id', authenticateToken, async (req, res) => {
 // DELETE employee (Soft Delete - Move to Trash)
 router.delete('/:id', authenticateToken, async (req, res) => {
     try {
+        const isManager = ['super_admin', 'system_manager', 'hr', 'admin'].includes(req.user.role);
+        if (!isManager) return res.status(403).json({ error: 'Permission denied. Management only.' });
+
         const { id } = req.params;
         const [result] = await db.query('UPDATE employees SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?', [id]);
 
