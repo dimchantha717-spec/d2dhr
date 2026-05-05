@@ -36,7 +36,7 @@ router.post('/', authenticateToken, async (req, res) => {
             id, employeeId, type, startDate, endDate, reason,
             evidencePhoto, evidenceAudio, lateDurationValue, lateDurationUnit,
             newBankName, newBankAccountName, newBankAccountNumber,
-            duration
+            duration, newOffDay
         } = req.body;
 
         // Generate ID if not provided
@@ -48,8 +48,8 @@ router.post('/', authenticateToken, async (req, res) => {
                 id, employee_id, type, start_date, end_date, reason, 
                 evidence_photo, evidence_audio, late_duration_value, late_duration_unit,
                 new_bank_name, new_bank_account_name, new_bank_account_number,
-                duration
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                duration, new_off_day
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 recordId,
                 employeeId || null,
@@ -64,7 +64,8 @@ router.post('/', authenticateToken, async (req, res) => {
                 newBankName || null,
                 newBankAccountName || null,
                 newBankAccountNumber || null,
-                duration || 'Full Day'
+                duration || 'Full Day',
+                newOffDay || null
             ]
         );
 
@@ -83,12 +84,21 @@ router.post('/', authenticateToken, async (req, res) => {
         const [empRows] = await db.query('SELECT name FROM employees WHERE id = ?', [employeeId]);
         const empName = empRows[0]?.name || 'Unknown';
         
-        let detailsText = `📅 Start: ${startDate}\n📅 End: ${endDate || '-'}\n📝 Reason: ${reason || '-'}`;
+        let detailsText = `📅 ចាប់ពី៖ ${startDate}\n📅 ដល់៖ ${endDate || '-'}\n💡 មូលហេតុ៖ ${reason || '-'}`;
         if (type.includes('Bank')) {
-            detailsText = `🏦 New Bank: ${newBankName}\n👤 Account: ${newBankAccountName}\n🔢 Number: ${newBankAccountNumber}`;
+            detailsText = `🏦 ធនាគារ៖ ${newBankName}\n👤 ឈ្មោះគណនី៖ ${newBankAccountName}\n🔢 លេខគណនី៖ ${newBankAccountNumber}`;
+        } else if (type.includes('ប្តូរថ្ងៃឈប់សម្រាក') || type.includes('Day Off')) {
+            detailsText = `📅 ថ្ងៃបច្ចុប្បន្ន៖ ${startDate}\n📅 ថ្ងៃឈប់សម្រាកថ្មី៖ ${newOffDay || '-'}\n💡 មូលហេតុ៖ ${reason || '-'}`;
+        } else if (type.includes('ថែមម៉ោង') || type.includes('OT')) {
+            detailsText = `⏰ រយៈពេលថែមម៉ោង៖ ${lateDurationValue} ${lateDurationUnit}\n💡 មូលហេតុ៖ ${reason || '-'}`;
         }
 
-        const telegramMessage = `📝 *New Request: ${type}*\n━━━━━━━━━━━━━━\n👤 Employee: *${empName}*\n⏰ Duration: ${duration}\n${detailsText}\n━━━━━━━━━━━━━━`;
+        const telegramMessage = `📝 *សំណើថ្មីពីបុគ្គលិក*\n` +
+            `━━━━━━━━━━━━━━\n` +
+            `👤 បុគ្គលិក៖ *${empName}*\n` +
+            `📂 ប្រភេទ៖ *${type}*\n` +
+            `${detailsText}\n` +
+            `━━━━━━━━━━━━━━`;
         sendNotification(telegramMessage);
 
         res.status(201).json(snakeToCamel(rows[0]));
@@ -180,11 +190,17 @@ router.put('/:id', authenticateToken, async (req, res) => {
                     'UPDATE employees SET bank_name = ?, bank_account_name = ?, bank_account_number = ? WHERE id = ?',
                     [new_bank_name, new_bank_account_name, new_bank_account_number, employee_id]
                 );
-            } else if (type === 'លាឈប់' || type === 'resignationRequest' || type === 'Resignation') {
                 await db.query(
                     'UPDATE employees SET status = "លាឈប់", resigned_reason = ? WHERE id = ?',
                     [leaveRequest.reason || null, employee_id]
                 );
+            } else if (type === 'ប្តូរថ្ងៃឈប់សម្រាក' || type === 'Day Off' || type === 'Change Day Off') {
+                if (leaveRequest.new_off_day) {
+                    await db.query(
+                        'UPDATE employees SET off_day = ? WHERE id = ?',
+                        [leaveRequest.new_off_day, employee_id]
+                    );
+                }
             }
         }
 
@@ -196,7 +212,13 @@ router.put('/:id', authenticateToken, async (req, res) => {
         const empName = empRows[0]?.name || 'Unknown';
         const statusEmoji = status === 'Approved' || status === 'អនុម័ត' ? '✅' : '❌';
         
-        const telegramUpdate = `${statusEmoji} *Request ${status}*\n━━━━━━━━━━━━━━\n👤 Employee: *${empName}*\n📝 Type: ${updatedRequest.type}\n📝 Reason: ${updatedRequest.reason || '-'}\n👤 By: ${adminName}\n━━━━━━━━━━━━━━`;
+        const telegramUpdate = `${statusEmoji} *ការឆ្លើយតបសំណើ*\n` +
+            `━━━━━━━━━━━━━━\n` +
+            `👤 សម្រាប់៖ *${empName}*\n` +
+            `📂 ប្រភេទ៖ ${updatedRequest.type}\n` +
+            `📊 ស្ថានភាព៖ *${status}*\n` +
+            `✍️ ដោយ៖ ${adminName}\n` +
+            `━━━━━━━━━━━━━━`;
         sendNotification(telegramUpdate);
 
 
@@ -243,7 +265,8 @@ router.delete('/:id', authenticateToken, async (req, res) => {
 // POST manual leave entry (Admin only)
 router.post('/manual', authenticateToken, async (req, res) => {
     try {
-        if (req.user.role !== 'admin' && req.user.role !== 'super_admin' && req.user.role !== 'system_manager') {
+        const isManager = req.user.role === 'admin' || req.user.role === 'super_admin' || req.user.role === 'system_manager' || req.user.role === 'hr' || req.user.role === 'accountant';
+        if (!isManager) {
             return res.status(403).json({ error: 'Permission denied. Admins only.' });
         }
 
