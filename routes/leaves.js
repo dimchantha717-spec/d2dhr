@@ -39,6 +39,35 @@ router.post('/', authenticateToken, async (req, res) => {
             duration, newOffDay
         } = req.body;
 
+        if (!employeeId || !type || !startDate) {
+            return res.status(400).json({ error: 'Missing required fields: employeeId, type, and startDate are required' });
+        }
+
+        // Helper to ensure YYYY-MM-DD format
+        const formatForDb = (dateStr) => {
+            if (!dateStr) return null;
+            if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) return dateStr.substring(0, 10);
+            
+            // Handle MM/DD/YYYY or DD/MM/YYYY
+            const parts = dateStr.split(/[/-]/);
+            if (parts.length === 3) {
+                // If first part is 4 digits, assume YYYY-MM-DD
+                if (parts[0].length === 4) return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+                // If last part is 4 digits, check if it's MM/DD/YYYY or DD/MM/YYYY
+                // For this project, we'll try to be smart or default to a safe parse
+                if (parts[2].length === 4) {
+                    const month = parseInt(parts[0]) <= 12 ? parts[0] : parts[1];
+                    const day = parseInt(parts[0]) <= 12 ? parts[1] : parts[0];
+                    return `${parts[2]}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+                }
+            }
+            return dateStr;
+        };
+
+        const dbStartDate = formatForDb(startDate);
+        const dbEndDate = formatForDb(endDate);
+        const dbOffDay = formatForDb(newOffDay);
+
         // Generate ID if not provided
         const recordId = id || Date.now().toString();
 
@@ -52,10 +81,10 @@ router.post('/', authenticateToken, async (req, res) => {
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 recordId,
-                employeeId || null,
-                type || null,
-                startDate || null,
-                endDate || null,
+                employeeId,
+                type,
+                dbStartDate,
+                dbEndDate,
                 reason || null,
                 evidencePhoto || null,
                 evidenceAudio || null,
@@ -65,7 +94,7 @@ router.post('/', authenticateToken, async (req, res) => {
                 newBankAccountName || null,
                 newBankAccountNumber || null,
                 duration || 'Full Day',
-                newOffDay || null
+                dbOffDay
             ]
         );
 
