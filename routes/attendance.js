@@ -288,7 +288,16 @@ router.get('/maintenance/fix-duplicates', authenticateToken, async (req, res) =>
         res.json({ message: 'Cleanup completed successfully', fixedGroups: fixedCount, processed: details });
     } catch (err) {
         console.error('Maintenance error:', err);
-        res.status(500).json({ error: 'Maintenance failed', details: err.message });
+    }
+});
+
+// Diagnostic route to see actual IDs from database
+router.get('/maintenance/debug-ids', authenticateToken, async (req, res) => {
+    try {
+        const [employees] = await db.query('SELECT id, name FROM employees ORDER BY name ASC');
+        res.json(employees);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
     }
 });
 
