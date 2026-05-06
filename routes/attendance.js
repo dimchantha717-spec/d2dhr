@@ -51,10 +51,29 @@ router.post('/', authenticateToken, async (req, res) => {
             validCheckIn2 = `${date} ${checkIn2}:00`;
         }
 
-        // Prevent duplicate records for the same employee and date
+        // Check if a record already exists for this employee and date
         const [existing] = await db.query('SELECT * FROM attendance_records WHERE employee_id = ? AND date = ?', [employeeId, date]);
+        
         if (existing.length > 0) {
-            return res.status(409).json({ error: 'Attendance record already exists for this date. Please update the existing record.' });
+            const record = existing[0];
+            let updateField = '';
+            let updateValue = validCheckIn || new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+
+            // Determine which field to update based on what's already filled
+            if (!record.check_out) {
+                updateField = 'check_out';
+            } else if (!record.check_in2) {
+                updateField = 'check_in2';
+            } else if (!record.check_out2) {
+                updateField = 'check_out2';
+            } else {
+                return res.status(400).json({ error: 'All attendance slots for today are already filled.' });
+            }
+
+            await db.query(`UPDATE attendance_records SET ${updateField} = ?, latitude = ?, longitude = ?, photo = ? WHERE id = ?`, 
+                [updateValue, lat, lng, physicalPhoto, record.id]);
+            
+            return res.json({ message: 'Attendance updated successfully', id: record.id, type: 'update' });
         }
 
         await db.query(
