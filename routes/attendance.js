@@ -224,12 +224,16 @@ router.get('/maintenance/fix-duplicates', authenticateToken, async (req, res) =>
         `);
 
         let fixedCount = 0;
+        let details = [];
+
         for (const group of groups) {
             const { employee_id, date } = group;
             const [records] = await db.query(
                 'SELECT * FROM attendance_records WHERE employee_id = ? AND date = ?',
                 [employee_id, date]
             );
+
+            if (records.length <= 1) continue;
 
             let slots = {
                 check_in: null,
@@ -242,30 +246,33 @@ router.get('/maintenance/fix-duplicates', authenticateToken, async (req, res) =>
 
             const timeToMin = (t) => {
                 if (!t || t === '--:--') return null;
-                const [h, m] = t.split(':').map(Number);
-                return h * 60 + m;
+                const parts = t.split(':');
+                if (parts.length < 2) return null;
+                return parseInt(parts[0]) * 60 + parseInt(parts[1]);
             };
 
             for (const r of records) {
-                // Merge Check-In (IN)
+                // Morning In: < 11:00
                 if (r.check_in && r.check_in !== '--:--') {
                     const mins = timeToMin(r.check_in);
-                    if (mins < 660) slots.check_in = r.check_in; // Before 11:00
-                    else if (mins >= 660 && mins < 900) slots.check_in2 = r.check_in; // 11:00 - 15:00
+                    if (mins < 660) { if (!slots.check_in) slots.check_in = r.check_in; }
+                    else if (mins >= 660 && mins < 900) { if (!slots.check_in2) slots.check_in2 = r.check_in; }
                 }
                 
-                // Merge Check-In 2 (If it exists in record)
-                if (r.check_in2 && r.check_in2 !== '--:--') slots.check_in2 = r.check_in2;
+                if (r.check_in2 && r.check_in2 !== '--:--') {
+                    if (!slots.check_in2) slots.check_in2 = r.check_in2;
+                }
 
-                // Merge Check-Out (OUT)
+                // Morning Out: < 14:00
                 if (r.check_out && r.check_out !== '--:--') {
                     const mins = timeToMin(r.check_out);
-                    if (mins < 840) slots.check_out = r.check_out; // Before 14:00
-                    else slots.check_out2 = r.check_out; // After 14:00
+                    if (mins < 840) { if (!slots.check_out) slots.check_out = r.check_out; }
+                    else { if (!slots.check_out2) slots.check_out2 = r.check_out; }
                 }
                 
-                // Merge Check-Out 2 (If it exists in record)
-                if (r.check_out2 && r.check_out2 !== '--:--') slots.check_out2 = r.check_out2;
+                if (r.check_out2 && r.check_out2 !== '--:--') {
+                    if (!slots.check_out2) slots.check_out2 = r.check_out2;
+                }
 
                 if (r.photo && !slots.photo) slots.photo = r.photo;
                 if (r.status === 'មកទាន់ពេល') slots.status = 'មកទាន់ពេល';
@@ -278,17 +285,16 @@ router.get('/maintenance/fix-duplicates', authenticateToken, async (req, res) =>
             );
 
             const otherIds = records.slice(1).map(r => r.id);
-            if (otherIds.length > 0) {
-                await db.query('DELETE FROM attendance_records WHERE id IN (?)', [otherIds]);
-            }
+            await db.query('DELETE FROM attendance_records WHERE id IN (?)', [otherIds]);
             
             fixedCount++;
+            details.push({ employee_id, date, count: group.count });
         }
 
-        res.json({ message: 'Cleanup completed successfully', fixedGroups: fixedCount });
+        res.json({ message: 'Cleanup completed successfully', fixedGroups: fixedCount, processed: details });
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Maintenance failed' });
+        console.error('Maintenance error:', err);
+        res.status(500).json({ error: 'Maintenance failed', details: err.message });
     }
 });
 
