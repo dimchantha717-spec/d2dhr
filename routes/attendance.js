@@ -209,4 +209,61 @@ router.delete('/:id', authenticateToken, async (req, res) => {
     }
 });
 
+// Maintenance route to fix duplicates on production
+router.get('/maintenance/fix-duplicates', authenticateToken, async (req, res) => {
+    if (!['super_admin', 'system_manager'].includes(req.user.role)) {
+        return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    try {
+        const [groups] = await db.query(`
+            SELECT employee_id, date, COUNT(*) as count 
+            FROM attendance_records 
+            GROUP BY employee_id, date 
+            HAVING count > 1
+        `);
+
+        let fixedCount = 0;
+        for (const group of groups) {
+            const { employee_id, date } = group;
+            const [records] = await db.query(
+                'SELECT * FROM attendance_records WHERE employee_id = ? AND date = ? ORDER BY check_in ASC',
+                [employee_id, date]
+            );
+
+            const primary = records[0];
+            const others = records.slice(1);
+
+            let updatedFields = {
+                check_out: primary.check_out,
+                check_in2: primary.check_in2,
+                check_out2: primary.check_out2,
+                photo: primary.photo
+            };
+
+            for (const other of others) {
+                if (!updatedFields.check_out) updatedFields.check_out = other.check_in || other.check_out;
+                else if (!updatedFields.check_in2) {
+                    updatedFields.check_in2 = other.check_in;
+                    if (!updatedFields.check_out) updatedFields.check_out = other.check_out;
+                } else if (!updatedFields.check_out2) updatedFields.check_out2 = other.check_out || other.check_in;
+                
+                if (!updatedFields.photo) updatedFields.photo = other.photo;
+                await db.query('DELETE FROM attendance_records WHERE id = ?', [other.id]);
+            }
+
+            await db.query(
+                'UPDATE attendance_records SET check_out = ?, check_in2 = ?, check_out2 = ?, photo = ? WHERE id = ?',
+                [updatedFields.check_out, updatedFields.check_in2, updatedFields.check_out2, updatedFields.photo, primary.id]
+            );
+            fixedCount++;
+        }
+
+        res.json({ message: 'Cleanup completed successfully', fixedGroups: fixedCount });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Maintenance failed' });
+    }
+});
+
 module.exports = router;
