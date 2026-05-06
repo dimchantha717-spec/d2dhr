@@ -242,10 +242,10 @@ router.get('/maintenance/fix-duplicates', authenticateToken, async (req, res) =>
             let status = 'មកទាន់ពេល';
 
             for (const r of records) {
-                if (r.check_in && r.check_in !== '--:--') inTimes.push(r.check_in);
-                if (r.check_in2 && r.check_in2 !== '--:--') inTimes.push(r.check_in2);
-                if (r.check_out && r.check_out !== '--:--') outTimes.push(r.check_out);
-                if (r.check_out2 && r.check_out2 !== '--:--') outTimes.push(r.check_out2);
+                if (r.check_in && !String(r.check_in).startsWith('0000')) inTimes.push(r.check_in);
+                if (r.check_in2 && !String(r.check_in2).startsWith('0000')) inTimes.push(r.check_in2);
+                if (r.check_out && !String(r.check_out).startsWith('0000')) outTimes.push(r.check_out);
+                if (r.check_out2 && !String(r.check_out2).startsWith('0000')) outTimes.push(r.check_out2);
                 if (r.photo) photos.push(r.photo);
                 if (r.status === 'មកទាន់ពេល') status = 'មកទាន់ពេល';
             }
@@ -255,17 +255,17 @@ router.get('/maintenance/fix-duplicates', authenticateToken, async (req, res) =>
             outTimes = [...new Set(outTimes)].sort();
 
             const timeToMin = (t) => {
-                const parts = t.split(':');
+                const timePart = String(t).includes(' ') ? String(t).split(' ')[1] : String(t);
+                const parts = timePart.split(':');
+                if (parts.length < 2) return 0;
                 return parseInt(parts[0]) * 60 + parseInt(parts[1]);
             };
 
             const slots = {
-                check_in: inTimes.find(t => timeToMin(t) < 660) || inTimes[0] || null, // Morning In (<11am) or earliest
-                check_in2: inTimes.find(t => timeToMin(t) >= 660) || null,             // Afternoon In (>=11am)
-                check_out: outTimes.find(t => timeToMin(t) < 840) || null,            // Morning Out (<2pm)
-                check_out2: outTimes.find(t => timeToMin(t) >= 840) || outTimes[outTimes.length-1] || null, // Afternoon Out (>=2pm) or latest
-                photo: photos[0] || null,
-                status: status
+                check_in: inTimes.find(t => timeToMin(t) < 660) || inTimes[0] || null,
+                check_in2: inTimes.find(t => timeToMin(t) >= 660) || null,
+                check_out: outTimes.find(t => timeToMin(t) < 840) || null,
+                check_out2: outTimes.find(t => timeToMin(t) >= 840) || outTimes[outTimes.length-1] || null,
             };
 
             // Safety: If check_in and check_in2 are the same, null the second one
@@ -275,7 +275,7 @@ router.get('/maintenance/fix-duplicates', authenticateToken, async (req, res) =>
             const primaryId = records[0].id;
             await db.query(
                 'UPDATE attendance_records SET check_in = ?, check_out = ?, check_in2 = ?, check_out2 = ?, status = ?, photo = ? WHERE id = ?',
-                [slots.check_in, slots.check_out, slots.check_in2, slots.check_out2, slots.status, slots.photo, primaryId]
+                [slots.check_in, slots.check_out, slots.check_in2, slots.check_out2, status, photos[0] || null, primaryId]
             );
 
             const otherIds = records.slice(1).map(r => r.id);
@@ -291,14 +291,6 @@ router.get('/maintenance/fix-duplicates', authenticateToken, async (req, res) =>
     }
 });
 
-// Diagnostic route to see actual IDs from database
-router.get('/maintenance/debug-ids', authenticateToken, async (req, res) => {
-    try {
-        const [employees] = await db.query('SELECT id, name FROM employees ORDER BY name ASC');
-        res.json(employees);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
+
 
 module.exports = router;
