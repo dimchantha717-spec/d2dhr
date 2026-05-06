@@ -235,48 +235,42 @@ router.get('/maintenance/fix-duplicates', authenticateToken, async (req, res) =>
 
             if (records.length <= 1) continue;
 
-            let slots = {
-                check_in: null,
-                check_out: null,
-                check_in2: null,
-                check_out2: null,
-                photo: null,
-                status: 'មកទាន់ពេល'
-            };
+            // Collect all unique timestamps from all columns across all duplicate records
+            let inTimes = [];
+            let outTimes = [];
+            let photos = [];
+            let status = 'មកទាន់ពេល';
+
+            for (const r of records) {
+                if (r.check_in && r.check_in !== '--:--') inTimes.push(r.check_in);
+                if (r.check_in2 && r.check_in2 !== '--:--') inTimes.push(r.check_in2);
+                if (r.check_out && r.check_out !== '--:--') outTimes.push(r.check_out);
+                if (r.check_out2 && r.check_out2 !== '--:--') outTimes.push(r.check_out2);
+                if (r.photo) photos.push(r.photo);
+                if (r.status === 'មកទាន់ពេល') status = 'មកទាន់ពេល';
+            }
+
+            // Deduplicate and sort
+            inTimes = [...new Set(inTimes)].sort();
+            outTimes = [...new Set(outTimes)].sort();
 
             const timeToMin = (t) => {
-                if (!t || t === '--:--') return null;
                 const parts = t.split(':');
-                if (parts.length < 2) return null;
                 return parseInt(parts[0]) * 60 + parseInt(parts[1]);
             };
 
-            for (const r of records) {
-                // Morning In: < 11:00
-                if (r.check_in && r.check_in !== '--:--') {
-                    const mins = timeToMin(r.check_in);
-                    if (mins < 660) { if (!slots.check_in) slots.check_in = r.check_in; }
-                    else if (mins >= 660 && mins < 900) { if (!slots.check_in2) slots.check_in2 = r.check_in; }
-                }
-                
-                if (r.check_in2 && r.check_in2 !== '--:--') {
-                    if (!slots.check_in2) slots.check_in2 = r.check_in2;
-                }
+            const slots = {
+                check_in: inTimes.find(t => timeToMin(t) < 660) || inTimes[0] || null, // Morning In (<11am) or earliest
+                check_in2: inTimes.find(t => timeToMin(t) >= 660) || null,             // Afternoon In (>=11am)
+                check_out: outTimes.find(t => timeToMin(t) < 840) || null,            // Morning Out (<2pm)
+                check_out2: outTimes.find(t => timeToMin(t) >= 840) || outTimes[outTimes.length-1] || null, // Afternoon Out (>=2pm) or latest
+                photo: photos[0] || null,
+                status: status
+            };
 
-                // Morning Out: < 14:00
-                if (r.check_out && r.check_out !== '--:--') {
-                    const mins = timeToMin(r.check_out);
-                    if (mins < 840) { if (!slots.check_out) slots.check_out = r.check_out; }
-                    else { if (!slots.check_out2) slots.check_out2 = r.check_out; }
-                }
-                
-                if (r.check_out2 && r.check_out2 !== '--:--') {
-                    if (!slots.check_out2) slots.check_out2 = r.check_out2;
-                }
-
-                if (r.photo && !slots.photo) slots.photo = r.photo;
-                if (r.status === 'មកទាន់ពេល') slots.status = 'មកទាន់ពេល';
-            }
+            // Safety: If check_in and check_in2 are the same, null the second one
+            if (slots.check_in === slots.check_in2) slots.check_in2 = null;
+            if (slots.check_out === slots.check_out2) slots.check_out2 = null;
 
             const primaryId = records[0].id;
             await db.query(
@@ -288,7 +282,7 @@ router.get('/maintenance/fix-duplicates', authenticateToken, async (req, res) =>
             await db.query('DELETE FROM attendance_records WHERE id IN (?)', [otherIds]);
             
             fixedCount++;
-            details.push({ employee_id, date, count: group.count });
+            details.push({ employee_id, date });
         }
 
         res.json({ message: 'Cleanup completed successfully', fixedGroups: fixedCount, processed: details });
