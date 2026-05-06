@@ -219,24 +219,24 @@ router.get('/maintenance/fix-duplicates', authenticateToken, async (req, res) =>
         // --- EMERGENCY RESTORE FOR 2026-05-06 ---
         const corruptedDate = '2026-05-06';
         const restorationData = [
-            { name: 'Seam Kimmouy', in: '08:14', out: '12:03', in2: '12:57' },
-            { name: 'Chham Sinat', in: '08:13', out: '12:03', in2: '12:58' },
-            { name: 'Ouk Savtey', in: '08:05', out: '12:03', in2: '13:09' },
-            { name: 'Taing Bunpich', in: '08:04', out: '11:05', in2: '12:01' },
-            { name: 'Sun Aliza', in: '08:01', out: '11:05', in2: '11:59' },
-            { name: 'Ngan Darareach', in: '08:01', out: '12:02', in2: '13:00' },
-            { name: 'Long Kimhorng', in: '08:00', out: '12:01', in2: '12:59' },
-            { name: 'Dim Ratana', in: '08:00', out: '12:02', in2: '12:58' },
-            { name: 'Seang Sreykea', in: '07:55', out: '12:03', in2: '13:01' },
-            { name: 'Dim Chantha', in: '07:54', out: '12:01', in2: '12:51' }
+            { id: '2', in: '08:14', out: '12:03', in2: '12:57' }, // Seam Kimmouy
+            { id: '5', in: '08:13', out: '12:03', in2: '12:58' }, // Chham Sinat
+            { id: '3', in: '08:05', out: '12:03', in2: '13:09' }, // Ouk Savtey
+            { id: '7', in: '08:04', out: '11:05', in2: '12:01' }, // Taing Bunpich
+            { id: '16', in: '08:01', out: '11:05', in2: '11:59' }, // Sun Aliza
+            { id: '21', in: '08:01', out: '12:02', in2: '13:00' }, // Ngan Darareach
+            { id: '20', in: '08:00', out: '12:01', in2: '12:59' }, // Long Kimhorng
+            { id: '12', in: '08:00', out: '12:02', in2: '12:58' }, // Dim Ratana
+            { id: '24', in: '07:55', out: '12:03', in2: '13:01' }, // Seang Sreykea
+            { id: '1', in: '07:54', out: '12:01', in2: '12:51' }   // Dim Chantha
         ];
 
         for (const data of restorationData) {
             await db.query(
                 `UPDATE attendance_records 
-                 SET check_in = ?, check_out = ?, check_in2 = ?, status = 'មកទាន់ពេល' 
-                 WHERE (employee_name = ? OR employee_name LIKE ?) AND date = ?`,
-                [data.in, data.out, data.in2, data.name, `%${data.name}%`, corruptedDate]
+                 SET check_in = ?, check_out = ?, check_in2 = ?, check_out2 = NULL, status = 'មកទាន់ពេល' 
+                 WHERE employee_id = ? AND date = ?`,
+                [data.in, data.out, data.in2, data.id, corruptedDate]
             );
         }
         // ----------------------------------------
