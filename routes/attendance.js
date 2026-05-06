@@ -51,6 +51,12 @@ router.post('/', authenticateToken, async (req, res) => {
             validCheckIn2 = `${date} ${checkIn2}:00`;
         }
 
+        // Prevent duplicate records for the same employee and date
+        const [existing] = await db.query('SELECT * FROM attendance_records WHERE employee_id = ? AND date = ?', [employeeId, date]);
+        if (existing.length > 0) {
+            return res.status(409).json({ error: 'Attendance record already exists for this date. Please update the existing record.' });
+        }
+
         await db.query(
             'INSERT INTO attendance_records (id, employee_id, date, check_in, check_in2, status, latitude, longitude, photo, is_holiday_work, ot_hours) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
             [recordId, employeeId, date, validCheckIn, validCheckIn2 || null, status, lat, lng, physicalPhoto, isHolidayWork || false, otHours || 0]
