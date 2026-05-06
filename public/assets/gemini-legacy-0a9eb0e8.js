@@ -1,1 +1,0 @@
-System.register(["./index-legacy-23b894d0.js"],function(r,e){var n;return{setters:[function(r){n=r.a}],execute:function(){r("g",async(r,e)=>{try{return(await n.chat.send(r,e)).response}catch(t){return console.error("AI Error:",t),`Error: ${t.message||"សូមអភ័យទោស មានបញ្ហាបច្គេកទេសក្នុងការភ្ជាប់ទៅកាន់ AI។ (Backend Error)"}`}})}}});
