@@ -231,40 +231,52 @@ router.get('/maintenance/fix-duplicates', authenticateToken, async (req, res) =>
                 [employee_id, date]
             );
 
-            // Collect all unique non-empty timestamps from all duplicate records
-            let timestamps = [];
-            let primaryPhoto = null;
-            let primaryStatus = 'មកទាន់ពេល';
-            
-            for (const r of records) {
-                if (r.check_in && r.check_in !== '--:--') timestamps.push(r.check_in);
-                if (r.check_out && r.check_out !== '--:--') timestamps.push(r.check_out);
-                if (r.check_in2 && r.check_in2 !== '--:--') timestamps.push(r.check_in2);
-                if (r.check_out2 && r.check_out2 !== '--:--') timestamps.push(r.check_out2);
-                if (r.photo && !primaryPhoto) primaryPhoto = r.photo;
-                if (r.status === 'មកទាន់ពេល') primaryStatus = 'មកទាន់ពេល';
-            }
-
-            // Remove duplicates and sort chronologically
-            timestamps = [...new Set(timestamps)].sort();
-
-            const primaryId = records[0].id;
-            const updateData = {
-                check_in: timestamps[0] || null,
-                check_out: timestamps[1] || null,
-                check_in2: timestamps[2] || null,
-                check_out2: timestamps[3] || null,
-                status: primaryStatus,
-                photo: primaryPhoto
+            let slots = {
+                check_in: null,
+                check_out: null,
+                check_in2: null,
+                check_out2: null,
+                photo: null,
+                status: 'មកទាន់ពេល'
             };
 
-            // Update primary record
+            const timeToMin = (t) => {
+                if (!t || t === '--:--') return null;
+                const [h, m] = t.split(':').map(Number);
+                return h * 60 + m;
+            };
+
+            for (const r of records) {
+                // Merge Check-In (IN)
+                if (r.check_in && r.check_in !== '--:--') {
+                    const mins = timeToMin(r.check_in);
+                    if (mins < 660) slots.check_in = r.check_in; // Before 11:00
+                    else if (mins >= 660 && mins < 900) slots.check_in2 = r.check_in; // 11:00 - 15:00
+                }
+                
+                // Merge Check-In 2 (If it exists in record)
+                if (r.check_in2 && r.check_in2 !== '--:--') slots.check_in2 = r.check_in2;
+
+                // Merge Check-Out (OUT)
+                if (r.check_out && r.check_out !== '--:--') {
+                    const mins = timeToMin(r.check_out);
+                    if (mins < 840) slots.check_out = r.check_out; // Before 14:00
+                    else slots.check_out2 = r.check_out; // After 14:00
+                }
+                
+                // Merge Check-Out 2 (If it exists in record)
+                if (r.check_out2 && r.check_out2 !== '--:--') slots.check_out2 = r.check_out2;
+
+                if (r.photo && !slots.photo) slots.photo = r.photo;
+                if (r.status === 'មកទាន់ពេល') slots.status = 'មកទាន់ពេល';
+            }
+
+            const primaryId = records[0].id;
             await db.query(
                 'UPDATE attendance_records SET check_in = ?, check_out = ?, check_in2 = ?, check_out2 = ?, status = ?, photo = ? WHERE id = ?',
-                [updateData.check_in, updateData.check_out, updateData.check_in2, updateData.check_out2, updateData.status, updateData.photo, primaryId]
+                [slots.check_in, slots.check_out, slots.check_in2, slots.check_out2, slots.status, slots.photo, primaryId]
             );
 
-            // Delete all other records in the group
             const otherIds = records.slice(1).map(r => r.id);
             if (otherIds.length > 0) {
                 await db.query('DELETE FROM attendance_records WHERE id IN (?)', [otherIds]);
