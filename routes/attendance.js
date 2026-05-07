@@ -76,6 +76,12 @@ async function autoRepairRecord(employeeId, date) {
             .sort((a, b) => a - b)
             .map(t => new Date(t));
 
+        const hasLunchBreak = (() => {
+            if (!breakTime || typeof breakTime !== 'string') return false;
+            const cleaned = breakTime.trim().toLowerCase();
+            return cleaned !== 'none' && cleaned !== 'null' && cleaned !== '0' && cleaned.includes('-');
+        })();
+
         const lunchStart = breakTime.includes('-') ? timeToMin(breakTime.split('-')[0]) : 720;
         const lunchEnd = breakTime.includes('-') ? timeToMin(breakTime.split('-')[1]) : 780;
 
@@ -83,6 +89,15 @@ async function autoRepairRecord(employeeId, date) {
 
         uniqueTimes.forEach(t => {
             const m = timeToMin(t);
+            
+            // 1. Logic for Employees WITHOUT Lunch Break (2-scan workflow)
+            if (!hasLunchBreak) {
+                if (!slots.check_in) slots.check_in = t;
+                else slots.check_out = t; // Multiple scans will update the final check-out
+                return;
+            }
+
+            // 2. Logic for Employees WITH Lunch Break (4-scan workflow)
             if (m < lunchStart + 15) { 
                 if (!slots.check_in) slots.check_in = t;
                 else slots.check_out = t;
