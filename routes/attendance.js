@@ -25,7 +25,6 @@ async function autoRepairRecord(employeeId, date) {
         if (empRows.length === 0) return;
         
         const [shiftRows] = await db.query('SELECT * FROM shifts WHERE id = ?', [empRows[0].shift_id]);
-        const shift = shiftRows.length > 0 ? shiftRows[0] : { start_time: '08:00', end_time: '17:00' };
         const breakTime = empRows[0].break_time || '12:00-13:00';
 
         const allTimes = [];
@@ -34,7 +33,7 @@ async function autoRepairRecord(employeeId, date) {
         let lat = records[0].latitude;
         let lng = records[0].longitude;
 
-        // Collect all scan timestamps from all records for this day
+        // Collect all scan timestamps
         for (const r of records) {
             if (r.check_in) allTimes.push(r.check_in);
             if (r.check_in2) allTimes.push(r.check_in2);
@@ -46,45 +45,62 @@ async function autoRepairRecord(employeeId, date) {
             if (r.longitude && !lng) lng = r.longitude;
         }
 
-        // De-duplicate and sort timestamps
-        const uniqueTimes = [...new Set(allTimes.map(t => String(t)))].sort();
-        
+        const formatToDb = (t) => {
+            if (!t) return null;
+            const d = new Date(t);
+            if (isNaN(d.getTime())) return String(t);
+            // Return YYYY-MM-DD HH:mm:ss
+            return d.getFullYear() + '-' +
+                String(d.getMonth() + 1).padStart(2, '0') + '-' +
+                String(d.getDate()).padStart(2, '0') + ' ' +
+                String(d.getHours()).padStart(2, '0') + ':' +
+                String(d.getMinutes()).padStart(2, '0') + ':' +
+                String(d.getSeconds()).padStart(2, '0');
+        };
+
         const timeToMin = (t) => {
-            const timePart = String(t).includes(' ') ? String(t).split(' ')[1] : String(t);
+            const d = new Date(t);
+            if (!isNaN(d.getTime())) {
+                return d.getHours() * 60 + d.getMinutes();
+            }
+            const str = String(t);
+            const timePart = str.includes(' ') ? str.split(' ')[1] : str;
             const parts = timePart.split(':');
             if (parts.length < 2) return 0;
             return parseInt(parts[0]) * 60 + parseInt(parts[1]);
         };
+
+        // Sort unique timestamps
+        const uniqueTimes = [...new Set(allTimes.map(t => new Date(t).getTime()))]
+            .filter(t => !isNaN(t))
+            .sort((a, b) => a - b)
+            .map(t => new Date(t));
 
         const lunchStart = breakTime.includes('-') ? timeToMin(breakTime.split('-')[0]) : 720;
         const lunchEnd = breakTime.includes('-') ? timeToMin(breakTime.split('-')[1]) : 780;
 
         const slots = { check_in: null, check_out: null, check_in2: null, check_out2: null };
 
-        // Smart re-slotting based on proximity to lunch break
         uniqueTimes.forEach(t => {
             const m = timeToMin(t);
-            if (m < lunchStart + 15) { // Morning period (before lunch + 15min buffer)
+            if (m < lunchStart + 15) { 
                 if (!slots.check_in) slots.check_in = t;
                 else slots.check_out = t;
-            } else if (m > lunchEnd - 15) { // Afternoon period (after lunch start - 15min buffer)
+            } else if (m > lunchEnd - 15) { 
                 if (!slots.check_in2) slots.check_in2 = t;
                 else slots.check_out2 = t;
             } else {
-                // In the middle of lunch break, assign to closest slot
                 if (Math.abs(m - lunchStart) < Math.abs(m - lunchEnd)) slots.check_out = t;
                 else slots.check_in2 = t;
             }
         });
 
-        // Use the oldest record as the primary one
         const primaryId = records[0].id;
         await db.query(
             'UPDATE attendance_records SET check_in = ?, check_out = ?, check_in2 = ?, check_out2 = ?, status = ?, photo = ?, latitude = ?, longitude = ? WHERE id = ?',
-            [slots.check_in, slots.check_out, slots.check_in2, slots.check_out2, status, photos[0] || null, lat, lng, primaryId]
+            [formatToDb(slots.check_in), formatToDb(slots.check_out), formatToDb(slots.check_in2), formatToDb(slots.check_out2), status, photos[0] || null, lat, lng, primaryId]
         );
 
-        // Delete other duplicate records for this day
         if (records.length > 1) {
             const otherIds = records.slice(1).map(r => r.id);
             await db.query('DELETE FROM attendance_records WHERE id IN (?)', [otherIds]);
@@ -145,7 +161,7 @@ router.post('/', authenticateToken, async (req, res) => {
         if (existing.length > 0) {
             const record = existing[0];
             let updateField = '';
-            let updateValue = validCheckIn || new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+            let updateValue = validCheckIn || `${date} ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}`;
 
             // Determine which field to update based on what's already filled
             if (!record.check_out) {
