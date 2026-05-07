@@ -5,6 +5,7 @@ const { snakeToCamel } = require('../utils/mapKeys');
 const { logAction } = require('../utils/auditLogger');
 const { authenticateToken } = require('../utils/authMiddleware');
 const { sendNotification } = require('../services/telegramService');
+const { ensurePhysicalFile } = require('../utils/fileHandler');
 
 // GET all leave requests
 router.get('/', authenticateToken, async (req, res) => {
@@ -42,6 +43,12 @@ router.post('/', authenticateToken, async (req, res) => {
         if (!employeeId || !type || !startDate) {
             return res.status(400).json({ error: 'Missing required fields: employeeId, type, and startDate are required' });
         }
+
+        // Ensure evidence is stored physically on disk
+        const host = req.get('host');
+        const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+        const physicalPhoto = await ensurePhysicalFile(evidencePhoto, 'leave-photo', host, protocol);
+        const physicalAudio = await ensurePhysicalFile(evidenceAudio, 'leave-audio', host, protocol);
 
         // Helper to ensure YYYY-MM-DD format
         const formatForDb = (dateStr) => {
@@ -86,8 +93,8 @@ router.post('/', authenticateToken, async (req, res) => {
                 dbStartDate,
                 dbEndDate,
                 reason || null,
-                evidencePhoto || null,
-                evidenceAudio || null,
+                physicalPhoto || null,
+                physicalAudio || null,
                 lateDurationValue || null,
                 lateDurationUnit || null,
                 newBankName || null,
@@ -122,12 +129,16 @@ router.post('/', authenticateToken, async (req, res) => {
             detailsText = `⏰ រយៈពេលថែមម៉ោង៖ ${lateDurationValue} ${lateDurationUnit}\n💡 មូលហេតុ៖ ${reason || '-'}`;
         }
 
+        const evidenceLink = physicalPhoto ? `\n📸 [មើលរូបភាពភស្តុតាង](${physicalPhoto})` : '';
+        const audioLink = physicalAudio ? `\n🎙️ [ស្តាប់សំឡេង](${physicalAudio})` : '';
+
         const telegramMessage = `📝 *សំណើថ្មីពីបុគ្គលិក*\n` +
             `━━━━━━━━━━━━━━\n` +
             `👤 បុគ្គលិក៖ *${empName}*\n` +
             `📂 ប្រភេទ៖ *${type}*\n` +
             `⏰ រយៈពេល៖ *${duration || 'Full Day'}*\n` +
             `${detailsText}\n` +
+            `${evidenceLink}${audioLink}\n` +
             `━━━━━━━━━━━━━━`;
         sendNotification(telegramMessage);
 
@@ -243,12 +254,15 @@ router.put('/:id', authenticateToken, async (req, res) => {
         const empName = empRows[0]?.name || 'Unknown';
         const statusEmoji = status === 'Approved' || status === 'អនុម័ត' ? '✅' : '❌';
         
+        const evidenceLink = updatedRequest.evidence_photo ? `\n📸 [មើលភស្តុតាង](${updatedRequest.evidence_photo})` : '';
+
         const telegramUpdate = `${statusEmoji} *ការឆ្លើយតបសំណើ*\n` +
             `━━━━━━━━━━━━━━\n` +
             `👤 សម្រាប់៖ *${empName}*\n` +
             `📂 ប្រភេទ៖ ${updatedRequest.type}\n` +
             `📊 ស្ថានភាព៖ *${status}*\n` +
             `✍️ ដោយ៖ ${adminName}\n` +
+            `${evidenceLink}\n` +
             `━━━━━━━━━━━━━━`;
         sendNotification(telegramUpdate);
 
