@@ -28,7 +28,7 @@ app.use((req, res, next) => {
 // Mount all backend controllers
 app.use('/api/employees', require('./routes/employees'));
 app.use('/api/shifts', require('./routes/shifts'));
-app.use('/api/attendance', require('./routes/attendance'));
+app.use('/api/attendance', require('./routes/attendance').router);
 app.use('/api/leaves', require('./routes/leaves'));
 app.use('/api/assets', require('./routes/assets'));
 app.use('/api/warnings', require('./routes/warnings'));
