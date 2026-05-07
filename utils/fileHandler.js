@@ -1,6 +1,5 @@
 const fs = require('fs');
 const path = require('path');
-const { v4: uuidv4 } = require('uuid');
 
 /**
  * Ensures all images and files are saved to the physical uploads folder.
@@ -26,12 +25,21 @@ async function ensurePhysicalFile(data, prefix = 'file', host = '', protocol = '
         
         // Determine extension
         let extension = '.bin';
-        if (mimeType.includes('jpeg')) extension = '.jpg';
-        else if (mimeType.includes('png')) extension = '.png';
-        else if (mimeType.includes('gif')) extension = '.gif';
-        else if (mimeType.includes('webp')) extension = '.webp';
-        else if (mimeType.includes('pdf')) extension = '.pdf';
-        else if (mimeType.includes('svg')) extension = '.svg';
+        const lowerMime = mimeType.toLowerCase();
+        if (lowerMime.includes('jpeg')) extension = '.jpg';
+        else if (lowerMime.includes('png')) extension = '.png';
+        else if (lowerMime.includes('gif')) extension = '.gif';
+        else if (lowerMime.includes('webp')) extension = '.webp';
+        else if (lowerMime.includes('pdf')) extension = '.pdf';
+        else if (lowerMime.includes('svg')) extension = '.svg';
+        else if (lowerMime.includes('webm')) extension = '.webm';
+        else if (lowerMime.includes('mp3') || lowerMime.includes('mpeg')) extension = '.mp3';
+        else if (lowerMime.includes('ogg')) extension = '.ogg';
+        else if (lowerMime.includes('wav')) extension = '.wav';
+        else if (lowerMime.includes('word') || lowerMime.includes('msword')) extension = '.doc';
+        else if (lowerMime.includes('officedocument.wordprocessingml')) extension = '.docx';
+        else if (lowerMime.includes('excel') || lowerMime.includes('ms-excel')) extension = '.xls';
+        else if (lowerMime.includes('officedocument.spreadsheetml')) extension = '.xlsx';
         
         const fileName = `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000)}${extension}`;
         const uploadDir = path.join(__dirname, '../uploads');
@@ -42,7 +50,7 @@ async function ensurePhysicalFile(data, prefix = 'file', host = '', protocol = '
         }
         
         const filePath = path.join(uploadDir, fileName);
-        fs.writeFileSync(filePath, buffer);
+        await fs.promises.writeFile(filePath, buffer);
         
         console.log(`💾 Saved base64 as physical file: ${fileName}`);
         
