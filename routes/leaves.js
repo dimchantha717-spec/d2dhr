@@ -319,12 +319,18 @@ router.post('/manual', authenticateToken, async (req, res) => {
         const {
             employeeId, type, startDate, endDate, reason,
             duration, daysDeducted, lateDurationValue, lateDurationUnit,
-            approvedBy
+            approvedBy, evidencePhoto, evidenceAudio
         } = req.body;
 
         if (!employeeId || !type || !startDate) {
             return res.status(400).json({ error: 'Missing required fields' });
         }
+
+        // Ensure evidence is stored physically on disk
+        const host = req.get('host');
+        const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+        const physicalPhoto = await ensurePhysicalFile(evidencePhoto, 'leave-photo-manual', host, protocol);
+        const physicalAudio = await ensurePhysicalFile(evidenceAudio, 'leave-audio-manual', host, protocol);
 
         const recordId = 'MANUAL-' + Date.now();
         let adminName = approvedBy || req.user.name || 'Admin';
@@ -341,20 +347,23 @@ router.post('/manual', authenticateToken, async (req, res) => {
             `INSERT INTO leave_requests (
                 id, employee_id, type, start_date, end_date, reason, 
                 status, approved_by, approved_at, duration,
-                late_duration_value, late_duration_unit
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?)`,
+                late_duration_value, late_duration_unit,
+                evidence_photo, evidence_audio
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?)`,
             [
                 recordId,
                 employeeId,
                 type + ' (Manual)',
                 startDate,
                 endDate || startDate,
-                (reason || `Manual entry by ${adminName}`) + ' [Manual Leave]',
+                reason || null,
                 'អនុម័ត',
                 adminName,
                 duration || 'Full Day',
-                lateDurationValue || 0,
-                lateDurationUnit || 'នាទី'
+                lateDurationValue || null,
+                lateDurationUnit || null,
+                physicalPhoto || null,
+                physicalAudio || null
             ]
         );
 
