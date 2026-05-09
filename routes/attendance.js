@@ -432,6 +432,7 @@ router.post('/maintenance/:action', authenticateToken, async (req, res) => {
 
     } catch (err) {
         console.error('Maintenance error:', err);
+        res.status(500).json({ error: 'Maintenance failed' });
     }
 });
 
