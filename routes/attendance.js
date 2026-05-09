@@ -133,27 +133,36 @@ async function autoRepairRecord(employeeId, date) {
             return cleaned !== 'none' && cleaned !== 'null' && cleaned !== '0' && cleaned.includes('-');
         })();
 
-        const lunchStart = breakTime.includes('-') ? timeToMin(breakTime.split('-')[0]) : 720;
-        const lunchEnd = breakTime.includes('-') ? timeToMin(breakTime.split('-')[1]) : 780;
-
         const slots = { check_in: null, check_out: null, check_in2: null, check_out2: null };
+        const bParts = breakTime.split('-').map(s => s.trim());
+        const lunchStart = bParts[0] ? timeToMin(bParts[0]) : 720;
+        const lunchEnd = bParts[1] ? timeToMin(bParts[1]) : 780;
 
         uniqueTimes.forEach(t => {
             const m = timeToMin(t);
+            
             if (!hasLunchBreak) {
                 if (!slots.check_in) slots.check_in = t;
                 else slots.check_out = t;
                 return;
             }
-            if (m < lunchStart + 15) { 
+
+            // High-precision window slotting
+            if (m < shiftStartMin + 90) { // Early morning -> Check-in
                 if (!slots.check_in) slots.check_in = t;
+                else if (m > shiftStartMin + 30 && !slots.check_out) slots.check_out = t; // Suspiciously late morning scan
+            } 
+            else if (m < lunchStart + 45) { // Near Lunch-Out
+                if (!slots.check_in) slots.check_in = t; // Missing morning scan
                 else slots.check_out = t;
-            } else if (m > lunchEnd - 15) { 
+            }
+            else if (m < lunchEnd + 45) { // Near Afternoon-In
                 if (!slots.check_in2) slots.check_in2 = t;
+                else if (!slots.check_out) slots.check_out = t; // Mis-timed lunch out?
+            }
+            else { // Late afternoon -> Work-End
+                if (!slots.check_in2) slots.check_in2 = t; // Missing afternoon-in
                 else slots.check_out2 = t;
-            } else {
-                if (Math.abs(m - lunchStart) < Math.abs(m - lunchEnd)) slots.check_out = t;
-                else slots.check_in2 = t;
             }
         });
         
