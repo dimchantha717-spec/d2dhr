@@ -449,7 +449,7 @@ router.post('/maintenance/:action', authenticateToken, async (req, res) => {
                 AND (HOUR(check_in) >= 0 AND HOUR(check_in) <= 4)
             `);
 
-            // 2. Undo over-corrections (14:00 - 17:00 -> -7h)
+            // 2. Undo over-corrections (14:00 - 18:00 -> -7h)
             const [fixedDown] = await db.query(`
                 UPDATE attendance_records 
                 SET check_in = DATE_SUB(check_in, INTERVAL 7 HOUR),
@@ -457,7 +457,10 @@ router.post('/maintenance/:action', authenticateToken, async (req, res) => {
                     check_in2 = DATE_SUB(check_in2, INTERVAL 7 HOUR),
                     check_out2 = DATE_SUB(check_out2, INTERVAL 7 HOUR)
                 WHERE date IN ('2026-05-08', '2026-05-09')
-                AND (HOUR(check_in) >= 14 AND HOUR(check_in) <= 17)
+                AND (
+                    (HOUR(check_in) >= 14 AND HOUR(check_in) <= 18) OR
+                    (HOUR(check_in2) >= 14 AND HOUR(check_in2) <= 18)
+                )
             `);
 
             // 3. Re-slot everything for these dates
