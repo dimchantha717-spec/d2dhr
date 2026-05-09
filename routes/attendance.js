@@ -7,6 +7,52 @@ const { authenticateToken } = require('../utils/authMiddleware');
 const { sendNotification } = require('../services/telegramService');
 const { ensurePhysicalFile } = require('../utils/fileHandler');
 
+const parseDate = (t) => {
+    if (!t) return new Date(NaN);
+    if (t instanceof Date) return t;
+    let str = String(t);
+    // Convert "YYYY-MM-DD HH:mm:ss" to "YYYY-MM-DDTHH:mm:ss" for better JS parsing
+    if (str.includes(' ') && !str.includes('T')) {
+        str = str.replace(' ', 'T');
+    }
+    return new Date(str);
+};
+
+const formatToDb = (t) => {
+    if (!t) return null;
+    const d = parseDate(t);
+    if (isNaN(d.getTime())) return String(t);
+    
+    // Always format using Cambodia time (UTC+7)
+    const options = { 
+        timeZone: 'Asia/Phnom_Penh', 
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit',
+        hour12: false 
+    };
+    
+    const parts = new Intl.DateTimeFormat('en-GB', options).formatToParts(d);
+    const getPart = (type) => parts.find(p => p.type === type).value;
+    
+    // Return YYYY-MM-DD HH:mm:ss
+    return `${getPart('year')}-${getPart('month')}-${getPart('day')} ${getPart('hour')}:${getPart('minute')}:${getPart('second')}`;
+};
+
+const timeToMin = (t) => {
+    const d = parseDate(t);
+    if (!isNaN(d.getTime())) {
+        const options = { timeZone: 'Asia/Phnom_Penh', hour: '2-digit', minute: '2-digit', hour12: false };
+        const timeStr = new Intl.DateTimeFormat('en-GB', options).format(d);
+        const [h, m] = timeStr.split(':');
+        return parseInt(h) * 60 + parseInt(m);
+    }
+    const str = String(t);
+    const timePart = str.includes(' ') ? str.split(' ')[1] : str;
+    const parts = timePart.split(':');
+    if (parts.length < 2) return 0;
+    return parseInt(parts[0]) * 60 + parseInt(parts[1]);
+};
+
 /**
  * Automatically repairs and merges attendance records for a specific employee and date.
  * Ensures timestamps are correctly slotted into Morning-In, Lunch-Out, Afternoon-In, and Work-End.
@@ -53,33 +99,8 @@ async function autoRepairRecord(employeeId, date) {
             if (r.longitude && !lng) lng = r.longitude;
         }
 
-        const formatToDb = (t) => {
-            if (!t) return null;
-            const d = new Date(t);
-            if (isNaN(d.getTime())) return String(t);
-            // Return YYYY-MM-DD HH:mm:ss
-            return d.getFullYear() + '-' +
-                String(d.getMonth() + 1).padStart(2, '0') + '-' +
-                String(d.getDate()).padStart(2, '0') + ' ' +
-                String(d.getHours()).padStart(2, '0') + ':' +
-                String(d.getMinutes()).padStart(2, '0') + ':' +
-                String(d.getSeconds()).padStart(2, '0');
-        };
-
-        const timeToMin = (t) => {
-            const d = new Date(t);
-            if (!isNaN(d.getTime())) {
-                return d.getHours() * 60 + d.getMinutes();
-            }
-            const str = String(t);
-            const timePart = str.includes(' ') ? str.split(' ')[1] : str;
-            const parts = timePart.split(':');
-            if (parts.length < 2) return 0;
-            return parseInt(parts[0]) * 60 + parseInt(parts[1]);
-        };
-
         // Sort unique timestamps
-        const uniqueTimes = [...new Set(allTimes.map(t => new Date(t).getTime()))]
+        const uniqueTimes = [...new Set(allTimes.map(t => parseDate(t).getTime()))]
             .filter(t => !isNaN(t))
             .sort((a, b) => a - b)
             .map(t => new Date(t));
@@ -171,7 +192,11 @@ router.post('/', authenticateToken, async (req, res) => {
         let validCheckIn = checkIn;
         if (!validCheckIn) {
             const now = new Date();
-            const timeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+            const timeStr = now.toLocaleTimeString('en-GB', { 
+                timeZone: 'Asia/Phnom_Penh',
+                hour: '2-digit', minute: '2-digit', second: '2-digit', 
+                hour12: false 
+            });
             validCheckIn = `${date} ${timeStr}`;
         } else if (date && checkIn && !checkIn.includes('T') && checkIn.length < 15) {
             validCheckIn = `${date} ${checkIn}:00`;
@@ -188,7 +213,11 @@ router.post('/', authenticateToken, async (req, res) => {
         if (existing.length > 0) {
             const record = existing[0];
             let updateField = '';
-            let updateValue = validCheckIn || `${date} ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}`;
+            let updateValue = validCheckIn || `${date} ${new Date().toLocaleTimeString('en-GB', { 
+                timeZone: 'Asia/Phnom_Penh',
+                hour: '2-digit', minute: '2-digit', second: '2-digit', 
+                hour12: false 
+            })}`;
 
             // Determine which field to update based on what's already filled
             if (!record.check_out) {
@@ -207,7 +236,7 @@ router.post('/', authenticateToken, async (req, res) => {
             // Auto-repair after update to ensure slots are correct
             await autoRepairRecord(employeeId, date);
 
-            const [finalRows] = await db.query('SELECT * FROM attendance_records WHERE id = ?', [record.id]);
+            const [finalRows] = await db.query('SELECT * FROM attendance_records WHERE employee_id = ? AND date = ?', [employeeId, date]);
             return res.json({ message: 'Attendance updated successfully', id: record.id, type: 'update', ...snakeToCamel(finalRows[0]) });
         }
 
@@ -221,7 +250,8 @@ router.post('/', authenticateToken, async (req, res) => {
         await autoRepairRecord(employeeId, date);
 
         // Re-fetch the record AFTER auto-repair to get the slotted times and correct status
-        const [rows] = await db.query('SELECT * FROM attendance_records WHERE id = ?', [recordId]);
+        // IMPORTANT: Fetch by employeeId and date because the original recordId might have been merged/deleted
+        const [rows] = await db.query('SELECT * FROM attendance_records WHERE employee_id = ? AND date = ?', [employeeId, date]);
 
         // Audit Log
         await logAction(
@@ -405,13 +435,10 @@ router.post('/maintenance/:action', authenticateToken, async (req, res) => {
                 if (r.status === 'យឺត' || r.status === 'ចេញមុន') status = r.status;
             }
 
-            const uniqueTimes = [...new Set(allTimes.map(t => String(t)))].sort();
-            const timeToMin = (t) => {
-                const timePart = String(t).includes(' ') ? String(t).split(' ')[1] : String(t);
-                const parts = timePart.split(':');
-                if (parts.length < 2) return 0;
-                return parseInt(parts[0]) * 60 + parseInt(parts[1]);
-            };
+            const uniqueTimes = [...new Set(allTimes.map(t => parseDate(t).getTime()))]
+                .filter(t => !isNaN(t))
+                .sort((a, b) => a - b)
+                .map(t => new Date(t));
 
             const lunchStart = breakTime.includes('-') ? timeToMin(breakTime.split('-')[0]) : 720;
             const lunchEnd = breakTime.includes('-') ? timeToMin(breakTime.split('-')[1]) : 780;
