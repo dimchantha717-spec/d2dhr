@@ -11,9 +11,16 @@ const parseDate = (t) => {
     if (!t) return new Date(NaN);
     if (t instanceof Date) return t;
     let str = String(t);
-    // Convert "YYYY-MM-DD HH:mm:ss" to "YYYY-MM-DDTHH:mm:ss" for better JS parsing
+    // Convert "YYYY-MM-DD HH:mm:ss" to "YYYY-MM-DDTHH:mm:ss"
     if (str.includes(' ') && !str.includes('T')) {
         str = str.replace(' ', 'T');
+    }
+    // If it's a date-time string without a timezone, assume Asia/Phnom_Penh (+07:00)
+    if (str.length >= 10 && !str.includes('Z') && !/[+-]\d{2}:\d{2}$/.test(str)) {
+        // Only append if it has a time part
+        if (str.includes('T')) {
+            str += '+07:00';
+        }
     }
     return new Date(str);
 };
@@ -105,11 +112,22 @@ async function autoRepairRecord(employeeId, date) {
             if (r.longitude && !lng) lng = r.longitude;
         }
 
-        // Sort unique timestamps
+        const shiftStartMin = shift ? timeToMin(shift.start_time) : 480;
+
+        // Self-Healing: Detect if timestamps are in UTC (7 hours behind)
+        // If all scans are suspiciously early (e.g., 1 AM when shift is 8 AM), shift them +7h
         const uniqueTimes = [...new Set(allTimes.map(t => parseDate(t).getTime()))]
             .filter(t => !isNaN(t))
             .sort((a, b) => a - b)
-            .map(t => new Date(t));
+            .map(ts => {
+                const d = new Date(ts);
+                const m = timeToMin(d);
+                // If scan is > 5 hours before shift start, it's likely a UTC leak
+                if (m < shiftStartMin - 300) {
+                    return new Date(ts + 7 * 60 * 60 * 1000);
+                }
+                return d;
+            });
 
         const hasLunchBreak = (() => {
             if (!breakTime || typeof breakTime !== 'string') return false;
