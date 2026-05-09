@@ -421,6 +421,24 @@ router.post('/maintenance/:action', authenticateToken, async (req, res) => {
         let fixedCount = 0;
         let details = [];
 
+        if (action === 'emergency-utc-fix') {
+            const [affected] = await db.query(`
+                UPDATE attendance_records 
+                SET check_in = DATE_ADD(check_in, INTERVAL 7 HOUR),
+                    check_out = DATE_ADD(check_out, INTERVAL 7 HOUR),
+                    check_in2 = DATE_ADD(check_in2, INTERVAL 7 HOUR),
+                    check_out2 = DATE_ADD(check_out2, INTERVAL 7 HOUR)
+                WHERE date IN ('2026-05-08', '2026-05-09')
+                AND (HOUR(check_in) < 12 OR check_in IS NULL)
+            `);
+            // After shifting, we MUST re-slot them to fix Morning/Afternoon logic
+            const [groupsToReslot] = await db.query("SELECT employee_id, date FROM attendance_records WHERE date IN ('2026-05-08', '2026-05-09') GROUP BY employee_id, date");
+            for (const g of groupsToReslot) {
+                await autoRepairRecord(g.employee_id, g.date);
+            }
+            return res.json({ message: 'Emergency UTC fix completed', affected: affected.affectedRows });
+        }
+
         for (const group of groups) {
             const { employee_id, date } = group;
             await autoRepairRecord(employee_id, date);
