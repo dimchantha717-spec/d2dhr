@@ -146,7 +146,7 @@ async function autoRepairRecord(employeeId, date) {
             // 1. Logic for Employees WITHOUT Lunch Break (2-scan workflow)
             if (!hasLunchBreak) {
                 if (!slots.check_in) slots.check_in = t;
-                else slots.check_out = t; // Multiple scans will update the final check-out
+                else slots.check_out = t;
                 return;
             }
 
@@ -162,6 +162,22 @@ async function autoRepairRecord(employeeId, date) {
                 else slots.check_in2 = t;
             }
         });
+        
+        // Recalculate status based on fixed timestamps
+        if (slots.check_in) {
+            const inMin = timeToMin(slots.check_in);
+            const gracePeriod = shift ? (shift.late_grace || 15) : 15;
+            if (inMin > shiftStartMin + gracePeriod) {
+                status = 'យឺត';
+            }
+        }
+        
+        // If it's a 4-scan workflow, check afternoon check-in too
+        if (hasLunchBreak && slots.check_in2) {
+            if (timeToMin(slots.check_in2) > lunchEnd + 5) {
+                status = 'យឺត';
+            }
+        }
 
         const primaryId = records[0].id;
         await db.query(
@@ -422,21 +438,34 @@ router.post('/maintenance/:action', authenticateToken, async (req, res) => {
         let details = [];
 
         if (action === 'emergency-utc-fix') {
-            const [affected] = await db.query(`
+            // 1. Fix original UTC leaks (00:00 - 04:00 -> +7h)
+            const [fixedUp] = await db.query(`
                 UPDATE attendance_records 
                 SET check_in = DATE_ADD(check_in, INTERVAL 7 HOUR),
                     check_out = DATE_ADD(check_out, INTERVAL 7 HOUR),
                     check_in2 = DATE_ADD(check_in2, INTERVAL 7 HOUR),
                     check_out2 = DATE_ADD(check_out2, INTERVAL 7 HOUR)
                 WHERE date IN ('2026-05-08', '2026-05-09')
-                AND (HOUR(check_in) < 12 OR check_in IS NULL)
+                AND (HOUR(check_in) >= 0 AND HOUR(check_in) <= 4)
             `);
-            // After shifting, we MUST re-slot them to fix Morning/Afternoon logic
+
+            // 2. Undo over-corrections (14:00 - 17:00 -> -7h)
+            const [fixedDown] = await db.query(`
+                UPDATE attendance_records 
+                SET check_in = DATE_SUB(check_in, INTERVAL 7 HOUR),
+                    check_out = DATE_SUB(check_out, INTERVAL 7 HOUR),
+                    check_in2 = DATE_SUB(check_in2, INTERVAL 7 HOUR),
+                    check_out2 = DATE_SUB(check_out2, INTERVAL 7 HOUR)
+                WHERE date IN ('2026-05-08', '2026-05-09')
+                AND (HOUR(check_in) >= 14 AND HOUR(check_in) <= 17)
+            `);
+
+            // 3. Re-slot everything for these dates
             const [groupsToReslot] = await db.query("SELECT employee_id, date FROM attendance_records WHERE date IN ('2026-05-08', '2026-05-09') GROUP BY employee_id, date");
             for (const g of groupsToReslot) {
                 await autoRepairRecord(g.employee_id, g.date);
             }
-            return res.json({ message: 'Emergency UTC fix completed', affected: affected.affectedRows });
+            return res.json({ message: 'Emergency bidirectional fix completed', affected: (fixedUp.affectedRows + fixedDown.affectedRows) });
         }
 
         for (const group of groups) {
