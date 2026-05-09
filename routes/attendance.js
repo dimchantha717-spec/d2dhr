@@ -438,25 +438,36 @@ router.post('/maintenance/:action', authenticateToken, async (req, res) => {
         let details = [];
 
         if (action === 'emergency-utc-fix') {
-            // 1. Fix original UTC leaks (00:00 - 04:00 -> +7h)
+            // 1. May 8: Shift EVERYTHING +7h (Aggressive)
+            const [fixedMay8] = await db.query(`
+                UPDATE attendance_records 
+                SET check_in = DATE_ADD(check_in, INTERVAL 7 HOUR),
+                    check_out = DATE_ADD(check_out, INTERVAL 7 HOUR),
+                    check_in2 = DATE_ADD(check_in2, INTERVAL 7 HOUR),
+                    check_out2 = DATE_ADD(check_out2, INTERVAL 7 HOUR)
+                WHERE date = '2026-05-08'
+            `);
+
+            // 2. May 9: Bidirectional fix (Safe)
+            // Fix original UTC leaks (00:00 - 04:00 -> +7h)
             const [fixedUp] = await db.query(`
                 UPDATE attendance_records 
                 SET check_in = DATE_ADD(check_in, INTERVAL 7 HOUR),
                     check_out = DATE_ADD(check_out, INTERVAL 7 HOUR),
                     check_in2 = DATE_ADD(check_in2, INTERVAL 7 HOUR),
                     check_out2 = DATE_ADD(check_out2, INTERVAL 7 HOUR)
-                WHERE date IN ('2026-05-08', '2026-05-09')
+                WHERE date = '2026-05-09'
                 AND (HOUR(check_in) >= 0 AND HOUR(check_in) <= 4)
             `);
 
-            // 2. Undo over-corrections (14:00 - 18:00 -> -7h)
+            // Undo over-corrections (14:00 - 18:00 -> -7h)
             const [fixedDown] = await db.query(`
                 UPDATE attendance_records 
                 SET check_in = DATE_SUB(check_in, INTERVAL 7 HOUR),
                     check_out = DATE_SUB(check_out, INTERVAL 7 HOUR),
                     check_in2 = DATE_SUB(check_in2, INTERVAL 7 HOUR),
                     check_out2 = DATE_SUB(check_out2, INTERVAL 7 HOUR)
-                WHERE date IN ('2026-05-08', '2026-05-09')
+                WHERE date = '2026-05-09'
                 AND (
                     (HOUR(check_in) >= 14 AND HOUR(check_in) <= 18) OR
                     (HOUR(check_in2) >= 14 AND HOUR(check_in2) <= 18)
@@ -468,7 +479,7 @@ router.post('/maintenance/:action', authenticateToken, async (req, res) => {
             for (const g of groupsToReslot) {
                 await autoRepairRecord(g.employee_id, g.date);
             }
-            return res.json({ message: 'Emergency bidirectional fix completed', affected: (fixedUp.affectedRows + fixedDown.affectedRows) });
+            return res.json({ message: 'Emergency comprehensive fix completed', affected: (fixedMay8.affectedRows + fixedUp.affectedRows + fixedDown.affectedRows) });
         }
 
         for (const group of groups) {
