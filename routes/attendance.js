@@ -439,7 +439,7 @@ router.post('/maintenance/:action', authenticateToken, async (req, res) => {
 
         if (action === 'emergency-utc-fix') {
             // 1. May 8: Shift only those that look like UTC (HOUR < 11)
-            const [fixedMay8] = await db.query(`
+            await db.query(`
                 UPDATE attendance_records 
                 SET check_in = CASE WHEN HOUR(check_in) < 11 THEN DATE_ADD(check_in, INTERVAL 7 HOUR) ELSE check_in END,
                     check_out = CASE WHEN HOUR(check_out) < 11 THEN DATE_ADD(check_out, INTERVAL 7 HOUR) ELSE check_out END,
@@ -451,6 +451,22 @@ router.post('/maintenance/:action', authenticateToken, async (req, res) => {
                     (check_out IS NOT NULL AND HOUR(check_out) < 11) OR
                     (check_in2 IS NOT NULL AND HOUR(check_in2) < 11) OR
                     (check_out2 IS NOT NULL AND HOUR(check_out2) < 11)
+                )
+            `);
+
+            // 1b. May 8: Undo over-correction (if someone is now 18:00-21:00 but should be 11:00-14:00)
+            const [fixedMay8] = await db.query(`
+                UPDATE attendance_records 
+                SET check_in = CASE WHEN HOUR(check_in) >= 18 THEN DATE_SUB(check_in, INTERVAL 7 HOUR) ELSE check_in END,
+                    check_out = CASE WHEN HOUR(check_out) >= 18 THEN DATE_SUB(check_out, INTERVAL 7 HOUR) ELSE check_out END,
+                    check_in2 = CASE WHEN HOUR(check_in2) >= 18 THEN DATE_SUB(check_in2, INTERVAL 7 HOUR) ELSE check_in2 END,
+                    check_out2 = CASE WHEN HOUR(check_out2) >= 18 THEN DATE_SUB(check_out2, INTERVAL 7 HOUR) ELSE check_out2 END
+                WHERE date = '2026-05-08'
+                AND (
+                    (check_in IS NOT NULL AND HOUR(check_in) >= 18) OR
+                    (check_out IS NOT NULL AND HOUR(check_out) >= 18) OR
+                    (check_in2 IS NOT NULL AND HOUR(check_in2) >= 18) OR
+                    (check_out2 IS NOT NULL AND HOUR(check_out2) >= 18)
                 )
             `);
 
@@ -486,6 +502,51 @@ router.post('/maintenance/:action', authenticateToken, async (req, res) => {
                 await autoRepairRecord(g.employee_id, g.date);
             }
             return res.json({ message: 'Emergency comprehensive fix completed', affected: (fixedMay8.affectedRows + fixedUp.affectedRows + fixedDown.affectedRows) });
+        }
+
+        if (action === 'perfect-fix-may8') {
+            console.log('--- STARTING PERFECT FIX FOR MAY 8 ---');
+            const employeesToFix = [
+                { name: 'Seam Kimmouy', slots: ['08:00:00', '12:00:00', '13:00:00', '17:00:00'] },
+                { name: 'Dim Ratana', slots: ['08:00:00', '12:00:00', '13:00:00', '20:32:00'] },
+                { name: 'Heang SengChay', slots: [null, null, '13:10:00', '17:00:00'] },
+                { name: 'Seang Sreykea', slots: ['08:00:00', '12:00:00', '13:00:00', '17:00:00'] },
+                { name: 'Chham Sinat', slots: ['08:00:00', '12:00:00', '13:00:00', '17:00:00'] },
+                { name: 'Ouk Savtey', slots: ['08:00:00', '12:00:00', '13:00:00', '17:00:00'] },
+                { name: 'Ngan Darareach', slots: ['08:00:00', '12:00:00', '13:00:00', '17:00:00'] },
+                { name: 'Long Kimhorng', slots: ['08:00:00', '12:00:00', '13:00:00', '17:00:00'] },
+                { name: 'Sun Aliza', slots: ['08:00:00', '11:00:00', '12:00:00', '17:00:00'] },
+                { name: 'Taing Bunpich', slots: ['08:00:00', '11:00:00', '12:00:00', '17:00:00'] }
+            ];
+
+            let matchedCount = 0;
+            for (const item of employeesToFix) {
+                const [emp] = await db.query('SELECT id, name FROM employees WHERE LOWER(TRIM(name)) LIKE LOWER(TRIM(?))', [`%${item.name}%`]);
+                if (emp.length > 0) {
+                    matchedCount++;
+                    const eid = emp[0].id;
+                    const date = '2026-05-08';
+                    console.log(`Matching ${item.name} -> ID: ${eid}`);
+                    
+                    const [exists] = await db.query('SELECT id FROM attendance_records WHERE employee_id = ? AND date = ?', [eid, date]);
+                    const format = (t) => t ? `${date} ${t}` : null;
+                    const s = item.slots;
+
+                    if (exists.length > 0) {
+                        console.log(`Updating existing record ${exists[0].id} for ${item.name}`);
+                        await db.query(`UPDATE attendance_records SET check_in = ?, check_out = ?, check_in2 = ?, check_out2 = ?, status = 'មកទាន់ពេល' WHERE id = ?`, 
+                            [format(s[0]), format(s[1]), format(s[2]), format(s[3]), exists[0].id]);
+                    } else {
+                        console.log(`Inserting new record for ${item.name}`);
+                        await db.query(`INSERT INTO attendance_records (id, employee_id, date, check_in, check_out, check_in2, check_out2, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'មកទាន់ពេល')`,
+                            [Date.now().toString().slice(-8) + Math.floor(Math.random()*1000), eid, date, format(s[0]), format(s[1]), format(s[2]), format(s[3])]);
+                    }
+                } else {
+                    console.warn(`No match found for employee name: ${item.name}`);
+                }
+            }
+            console.log(`--- PERFECT FIX FINISHED. Matched: ${matchedCount} ---`);
+            return res.json({ message: 'Perfect fix applied', matched: matchedCount });
         }
 
         for (const group of groups) {
