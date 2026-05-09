@@ -438,14 +438,20 @@ router.post('/maintenance/:action', authenticateToken, async (req, res) => {
         let details = [];
 
         if (action === 'emergency-utc-fix') {
-            // 1. May 8: Shift EVERYTHING +7h (Aggressive)
+            // 1. May 8: Shift only those that look like UTC (HOUR < 11)
             const [fixedMay8] = await db.query(`
                 UPDATE attendance_records 
-                SET check_in = DATE_ADD(check_in, INTERVAL 7 HOUR),
-                    check_out = DATE_ADD(check_out, INTERVAL 7 HOUR),
-                    check_in2 = DATE_ADD(check_in2, INTERVAL 7 HOUR),
-                    check_out2 = DATE_ADD(check_out2, INTERVAL 7 HOUR)
+                SET check_in = CASE WHEN HOUR(check_in) < 11 THEN DATE_ADD(check_in, INTERVAL 7 HOUR) ELSE check_in END,
+                    check_out = CASE WHEN HOUR(check_out) < 11 THEN DATE_ADD(check_out, INTERVAL 7 HOUR) ELSE check_out END,
+                    check_in2 = CASE WHEN HOUR(check_in2) < 11 THEN DATE_ADD(check_in2, INTERVAL 7 HOUR) ELSE check_in2 END,
+                    check_out2 = CASE WHEN HOUR(check_out2) < 11 THEN DATE_ADD(check_out2, INTERVAL 7 HOUR) ELSE check_out2 END
                 WHERE date = '2026-05-08'
+                AND (
+                    (check_in IS NOT NULL AND HOUR(check_in) < 11) OR
+                    (check_out IS NOT NULL AND HOUR(check_out) < 11) OR
+                    (check_in2 IS NOT NULL AND HOUR(check_in2) < 11) OR
+                    (check_out2 IS NOT NULL AND HOUR(check_out2) < 11)
+                )
             `);
 
             // 2. May 9: Bidirectional fix (Safe)
