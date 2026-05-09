@@ -71,7 +71,13 @@ async function autoRepairRecord(employeeId, date) {
         if (empRows.length === 0) return;
         
         const [shiftRows] = await db.query('SELECT * FROM shifts WHERE id = ?', [empRows[0].shift_id]);
-        const breakTime = empRows[0].break_time || '12:00-13:00';
+        const shift = shiftRows.length > 0 ? shiftRows[0] : null;
+        
+        // Follow the Work Schedule: 
+        // 1. Check employee-specific break time
+        // 2. Fall back to shift break time
+        // 3. If neither exists, breakTime will be null (leading to 2-scan workflow)
+        const breakTime = empRows[0].break_time || (shift ? shift.break_time : null);
 
         const allTimes = [];
         let photos = [];
@@ -399,78 +405,8 @@ router.post('/maintenance/:action', authenticateToken, async (req, res) => {
 
         for (const group of groups) {
             const { employee_id, date } = group;
-            const [records] = await db.query(
-                'SELECT * FROM attendance_records WHERE employee_id = ? AND date = ? ORDER BY created_at ASC',
-                [employee_id, date]
-            );
-
-            if (records.length === 0) continue;
-
-            // Fetch shift info
-            const [emps] = await db.query('SELECT shift_id, break_time FROM employees WHERE id = ?', [employee_id]);
-            if (emps.length === 0) continue;
-            
-            const [shifts] = await db.query('SELECT * FROM shifts WHERE id = ?', [emps[0].shift_id]);
-            const shift = shifts.length > 0 ? shifts[0] : { start_time: '08:00', end_time: '17:00' };
-            const breakTime = emps[0].break_time || '12:00-13:00';
-
-            const allTimes = [];
-            let photos = [];
-            let status = 'មកទាន់ពេល';
-            let lat = records[0].latitude;
-            let lng = records[0].longitude;
-
-            for (const r of records) {
-                if (r.check_in) allTimes.push(r.check_in);
-                if (r.check_in2) allTimes.push(r.check_in2);
-                if (r.check_out) allTimes.push(r.check_out);
-                if (r.check_out2) allTimes.push(r.check_out2);
-                
-                // Fallback to created_at if no times were recorded
-                if (!r.check_in && !r.check_in2 && !r.check_out && !r.check_out2 && r.created_at) {
-                    allTimes.push(r.created_at);
-                }
-
-                if (r.photo) photos.push(r.photo);
-                if (r.status === 'យឺត' || r.status === 'ចេញមុន') status = r.status;
-            }
-
-            const uniqueTimes = [...new Set(allTimes.map(t => parseDate(t).getTime()))]
-                .filter(t => !isNaN(t))
-                .sort((a, b) => a - b)
-                .map(t => new Date(t));
-
-            const lunchStart = breakTime.includes('-') ? timeToMin(breakTime.split('-')[0]) : 720;
-            const lunchEnd = breakTime.includes('-') ? timeToMin(breakTime.split('-')[1]) : 780;
-            const shiftEnd = timeToMin(shift.end_time);
-
-            const slots = { check_in: null, check_out: null, check_in2: null, check_out2: null };
-
-            uniqueTimes.forEach(t => {
-                const m = timeToMin(t);
-                if (m < lunchStart + 30) {
-                    if (!slots.check_in) slots.check_in = t;
-                    else slots.check_out = t;
-                } else if (m > lunchEnd - 30) {
-                    if (!slots.check_in2) slots.check_in2 = t;
-                    else slots.check_out2 = t;
-                } else {
-                    if (Math.abs(m - lunchStart) < Math.abs(m - lunchEnd)) slots.check_out = t;
-                    else slots.check_in2 = t;
-                }
-            });
-
-            const primaryId = records[0].id;
-            await db.query(
-                'UPDATE attendance_records SET check_in = ?, check_out = ?, check_in2 = ?, check_out2 = ?, status = ?, photo = ?, latitude = ?, longitude = ? WHERE id = ?',
-                [slots.check_in, slots.check_out, slots.check_in2, slots.check_out2, status, photos[0] || null, lat, lng, primaryId]
-            );
-
-            if (records.length > 1) {
-                const otherIds = records.slice(1).map(r => r.id);
-                await db.query('DELETE FROM attendance_records WHERE id IN (?)', [otherIds]);
-                fixedCount++;
-            }
+            await autoRepairRecord(employee_id, date);
+            fixedCount++;
             details.push({ employee_id, date });
         }
 
