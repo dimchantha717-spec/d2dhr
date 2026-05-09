@@ -157,23 +157,40 @@ async function autoRepairRecord(employeeId, date) {
             }
         });
         
-        // Recalculate status from scratch based on fixed timestamps
+        // Recalculate status from scratch using a SHARED 15-minute daily grace period
         let finalStatus = 'មកទាន់ពេល';
         const gracePeriod = shift ? (shift.late_grace || 15) : 15;
+        let totalDiscrepancy = 0;
 
         if (slots.check_in) {
             const inMin = timeToMin(slots.check_in);
-            if (inMin > shiftStartMin + gracePeriod) finalStatus = 'យឺត';
+            if (inMin > shiftStartMin) totalDiscrepancy += (inMin - shiftStartMin);
         }
         
         if (hasLunchBreak) {
-            if (slots.check_in2) {
-                if (timeToMin(slots.check_in2) > lunchEnd + 5) finalStatus = 'យឺត';
+            if (slots.check_out) {
+                const outMin = timeToMin(slots.check_out);
+                if (outMin < lunchStart) totalDiscrepancy += (lunchStart - outMin);
             }
-            if (slots.check_out && timeToMin(slots.check_out) < lunchStart - 5) finalStatus = 'ចេញមុន';
-            if (slots.check_out2 && timeToMin(slots.check_out2) < shiftEndMin - 5) finalStatus = 'ចេញមុន';
+            if (slots.check_in2) {
+                const in2Min = timeToMin(slots.check_in2);
+                if (in2Min > lunchEnd) totalDiscrepancy += (in2Min - lunchEnd);
+            }
+            if (slots.check_out2) {
+                const out2Min = timeToMin(slots.check_out2);
+                if (out2Min < shiftEndMin) totalDiscrepancy += (shiftEndMin - out2Min);
+            }
         } else {
-            if (slots.check_out && timeToMin(slots.check_out) < shiftEndMin - 5) finalStatus = 'ចេញមុន';
+            if (slots.check_out) {
+                const outMin = timeToMin(slots.check_out);
+                if (outMin < shiftEndMin) totalDiscrepancy += (shiftEndMin - outMin);
+            }
+        }
+
+        if (totalDiscrepancy > gracePeriod) {
+            // Determine if the primary issue was lateness or early leave
+            // For simplicity, we mark as 'Late' if they are over the total grace
+            finalStatus = 'យឺត'; 
         }
 
 
