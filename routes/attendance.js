@@ -107,22 +107,20 @@ async function autoRepairRecord(employeeId, date) {
             }
 
             if (r.photo) photos.push(r.photo);
-            if (r.status === 'យឺត' || r.status === 'ចេញមុន') status = r.status;
             if (r.latitude && !lat) lat = r.latitude;
             if (r.longitude && !lng) lng = r.longitude;
         }
 
         const shiftStartMin = shift ? timeToMin(shift.start_time) : 480;
+        const shiftEndMin = shift ? timeToMin(shift.end_time) : 1020;
 
         // Self-Healing: Detect if timestamps are in UTC (7 hours behind)
-        // If all scans are suspiciously early (e.g., 1 AM when shift is 8 AM), shift them +7h
         const uniqueTimes = [...new Set(allTimes.map(t => parseDate(t).getTime()))]
             .filter(t => !isNaN(t))
             .sort((a, b) => a - b)
             .map(ts => {
                 const d = new Date(ts);
                 const m = timeToMin(d);
-                // If scan is > 5 hours before shift start, it's likely a UTC leak
                 if (m < shiftStartMin - 300) {
                     return new Date(ts + 7 * 60 * 60 * 1000);
                 }
@@ -142,15 +140,11 @@ async function autoRepairRecord(employeeId, date) {
 
         uniqueTimes.forEach(t => {
             const m = timeToMin(t);
-            
-            // 1. Logic for Employees WITHOUT Lunch Break (2-scan workflow)
             if (!hasLunchBreak) {
                 if (!slots.check_in) slots.check_in = t;
                 else slots.check_out = t;
                 return;
             }
-
-            // 2. Logic for Employees WITH Lunch Break (4-scan workflow)
             if (m < lunchStart + 15) { 
                 if (!slots.check_in) slots.check_in = t;
                 else slots.check_out = t;
@@ -163,26 +157,30 @@ async function autoRepairRecord(employeeId, date) {
             }
         });
         
-        // Recalculate status based on fixed timestamps
+        // Recalculate status from scratch based on fixed timestamps
+        let finalStatus = 'មកទាន់ពេល';
+        const gracePeriod = shift ? (shift.late_grace || 15) : 15;
+
         if (slots.check_in) {
             const inMin = timeToMin(slots.check_in);
-            const gracePeriod = shift ? (shift.late_grace || 15) : 15;
-            if (inMin > shiftStartMin + gracePeriod) {
-                status = 'យឺត';
-            }
+            if (inMin > shiftStartMin + gracePeriod) finalStatus = 'យឺត';
         }
         
-        // If it's a 4-scan workflow, check afternoon check-in too
-        if (hasLunchBreak && slots.check_in2) {
-            if (timeToMin(slots.check_in2) > lunchEnd + 5) {
-                status = 'យឺត';
+        if (hasLunchBreak) {
+            if (slots.check_in2) {
+                if (timeToMin(slots.check_in2) > lunchEnd + 5) finalStatus = 'យឺត';
             }
+            if (slots.check_out && timeToMin(slots.check_out) < lunchStart - 5) finalStatus = 'ចេញមុន';
+            if (slots.check_out2 && timeToMin(slots.check_out2) < shiftEndMin - 5) finalStatus = 'ចេញមុន';
+        } else {
+            if (slots.check_out && timeToMin(slots.check_out) < shiftEndMin - 5) finalStatus = 'ចេញមុន';
         }
+
 
         const primaryId = records[0].id;
         await db.query(
             'UPDATE attendance_records SET check_in = ?, check_out = ?, check_in2 = ?, check_out2 = ?, status = ?, photo = ?, latitude = ?, longitude = ? WHERE id = ?',
-            [formatToDb(slots.check_in), formatToDb(slots.check_out), formatToDb(slots.check_in2), formatToDb(slots.check_out2), status, photos[0] || null, lat, lng, primaryId]
+            [formatToDb(slots.check_in), formatToDb(slots.check_out), formatToDb(slots.check_in2), formatToDb(slots.check_out2), finalStatus, photos[0] || null, lat, lng, primaryId]
         );
 
         if (records.length > 1) {
